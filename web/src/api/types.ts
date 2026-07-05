@@ -45,7 +45,7 @@ export interface DesktopApi {
   set_setting: (key: string, value: unknown) => Promise<SetSettingResult>
   get_runtime_status: () => Promise<RuntimeStatus>
   set_runtime_path: (key: string, path: string) => Promise<SetRuntimePathResult>
-  check_runtime_component: (key: string) => Promise<RuntimeComponentStatus>
+  set_runtime_paths: (paths: Record<string, string>) => Promise<SetRuntimePathResult>
 }
 
 declare global {

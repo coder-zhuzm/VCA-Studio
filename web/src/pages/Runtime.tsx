@@ -39,18 +39,16 @@ export function Runtime() {
   async function save() {
     setLoading(true)
     try {
-      let next: RuntimeStatus | null = null
       const values = form.getFieldsValue()
-      for (const [key] of PATH_FIELDS) {
-        const result = await api.setRuntimePath(key, values[key] ?? '')
-        if (!result.ok) {
-          message.error(result.error ?? '保存失败')
-          return
-        }
-        next = result
+      const result = await api.setRuntimePaths(Object.fromEntries(
+        PATH_FIELDS.map(([key]) => [key, values[key] ?? '']),
+      ))
+      if (!result.ok) {
+        message.error(result.error ?? '保存失败')
+        return
       }
-      setStatus(next)
-      if (next) form.setFieldsValue(next.paths)
+      setStatus(result)
+      form.setFieldsValue(result.paths)
       message.success('已保存并检测')
     } finally {
       setLoading(false)

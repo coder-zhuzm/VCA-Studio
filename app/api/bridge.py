@@ -40,8 +40,8 @@ class Api:
     def set_runtime_path(self, key: str, path: str) -> dict[str, Any]:
         return self._runtime.set_path(key, path)
 
-    def check_runtime_component(self, key: str) -> dict[str, Any]:
-        return self._runtime.check_component(key)
+    def set_runtime_paths(self, paths: dict[str, Any]) -> dict[str, Any]:
+        return self._runtime.set_paths(paths)
 
 
 def build_api() -> Api:

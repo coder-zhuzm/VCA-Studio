@@ -51,3 +51,9 @@ class SettingsStore:
             data = self.all()
             data[key] = value
             self._store.write(data)
+
+    def update(self, values: dict[str, Any]) -> None:
+        with self._lock:
+            data = self.all()
+            data.update(values)
+            self._store.write(data)

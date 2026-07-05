@@ -40,10 +40,14 @@ class RuntimeService:
         }
 
     def set_path(self, key: str, path: str) -> dict[str, Any]:
-        key = str(key or "")
-        if key not in RUNTIME_PATH_KEYS:
-            return {"ok": False, "error": f"未知运行环境路径: {key}", **self.status()}
-        self._settings.set(key, str(path or "").strip())
+        return self.set_paths({key: path})
+
+    def set_paths(self, paths: dict[str, Any]) -> dict[str, Any]:
+        cleaned = {str(key or ""): str(value or "").strip() for key, value in (paths or {}).items()}
+        invalid = [key for key in cleaned if key not in RUNTIME_PATH_KEYS]
+        if invalid:
+            return {"ok": False, "error": f"未知运行环境路径: {invalid[0]}", **self.status()}
+        self._settings.update(cleaned)
         return {"ok": True, **self.status()}
 
     def check_component(self, key: str) -> dict[str, Any]:

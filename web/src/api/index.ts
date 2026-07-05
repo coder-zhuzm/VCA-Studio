@@ -53,8 +53,9 @@ const mock = {
     mockRuntimePaths[key] = value
     return { ok: true, ...mockRuntimeStatus() }
   },
-  async check_runtime_component(key: string): Promise<RuntimeComponentStatus> {
-    return mockRuntimeStatus().components.find((it) => it.key === key) ?? mockComponent('ffmpeg', key)
+  async set_runtime_paths(paths: Record<string, string>): Promise<SetRuntimePathResult> {
+    Object.assign(mockRuntimePaths, paths)
+    return { ok: true, ...mockRuntimeStatus() }
   },
 }
 
@@ -83,5 +84,5 @@ export const api = {
   setSetting: async (key: string, value: unknown) => (await desktop()).set_setting(key, value),
   getRuntimeStatus: async () => (await desktop()).get_runtime_status(),
   setRuntimePath: async (key: string, path: string) => (await desktop()).set_runtime_path(key, path),
-  checkRuntimeComponent: async (key: string) => (await desktop()).check_runtime_component(key),
+  setRuntimePaths: async (paths: Record<string, string>) => (await desktop()).set_runtime_paths(paths),
 }
