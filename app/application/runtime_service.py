@@ -77,7 +77,8 @@ class RuntimeService:
 
     def _check_command(self, key: str, setting_key: str, exe: str) -> dict[str, Any]:
         configured = str(self._settings.get(setting_key, "") or "").strip()
-        candidate = configured or shutil.which(exe) or ""
+        configured_path = Path(configured).expanduser() if configured else None
+        candidate = str(configured_path) if configured_path else shutil.which(exe) or ""
         exists = bool(candidate and (Path(candidate).exists() or shutil.which(candidate)))
         checks = [{
             "key": setting_key,
@@ -101,7 +102,7 @@ class RuntimeService:
                 **config.subprocess_no_window(),
             )
         except (OSError, subprocess.SubprocessError) as exc:
-            return {"key": f"{label}_version", "label": f"{label} 版本", "ok": False, "message": str(exc)}
+            return {"key": f"{label}_version", "label": f"{label} 版本", "ok": False, "status": "error", "message": str(exc)}
         first = (result.stdout or result.stderr or "").splitlines()[0] if (result.stdout or result.stderr) else ""
         return {
             "key": f"{label}_version",
@@ -128,7 +129,10 @@ class RuntimeService:
 
     def _component(self, key: str, checks: list[dict[str, Any]]) -> dict[str, Any]:
         ok_count = sum(1 for check in checks if check.get("ok"))
-        if checks and ok_count == len(checks):
+        if any(check.get("status") == "error" for check in checks):
+            status = "error"
+            message = "检测失败"
+        elif checks and ok_count == len(checks):
             status = "ready"
             message = "已就绪"
         elif ok_count:
