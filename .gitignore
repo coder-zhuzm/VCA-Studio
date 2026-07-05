@@ -86,3 +86,4 @@ desktop.ini
 .superpowers/
 # ===== Claude worktrees =====
 .claude/worktrees/
+web/package-lock.json
