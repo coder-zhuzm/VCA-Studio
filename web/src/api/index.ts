@@ -28,11 +28,10 @@ function delay(ms: number) {
 async function desktop() {
   if (window.pywebview?.api) return window.pywebview.api
 
-  if (window.location.protocol === 'file:') {
-    for (let i = 0; i < 20; i++) {
-      await delay(25)
-      if (window.pywebview?.api) return window.pywebview.api
-    }
+  // ponytail: pywebview has no reliable dev-mode signal here; wait 500ms before browser mock fallback.
+  for (let i = 0; i < 20; i++) {
+    await delay(25)
+    if (window.pywebview?.api) return window.pywebview.api
   }
 
   return mock
