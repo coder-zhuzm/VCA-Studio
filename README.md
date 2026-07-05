@@ -107,6 +107,12 @@ http://localhost:5173?desktop=1
 | macOS | `~/Library/Application Support/VCA-Studio/.vca_studio` |
 | Linux | `$XDG_DATA_HOME/VCA-Studio/.vca_studio` 或 `~/.local/share/VCA-Studio/.vca_studio` |
 
+### 运行环境管理
+
+- `/runtime` 页面可查看 ffmpeg / ffprobe / SVC / RVC / UVR 状态
+- 支持手动填写并保存 runtime 路径
+- 当前仅做轻量检测，不做自动安装、CUDA 检测或整合包扫描
+
 ## 后续规划
 
 P0 目标是跑通 AI 翻唱核心闭环：
