@@ -10,7 +10,7 @@ import webview
 import config
 from api.bridge import build_api
 
-DEV_URL = "http://localhost:5173"
+DEV_URL = "http://localhost:5173?desktop=1"
 
 
 def _url(dev: bool) -> str:

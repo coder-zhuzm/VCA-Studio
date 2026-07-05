@@ -30,7 +30,11 @@ def _default_data_dir() -> Path:
         return Path(env).expanduser().resolve()
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / APP_NAME / DATA_DIR_NAME
-    return ROOT_DIR / DATA_DIR_NAME
+    if sys.platform == "win32":
+        root = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
+    else:
+        root = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
+    return root / APP_NAME / DATA_DIR_NAME
 
 
 DATA_DIR = _default_data_dir()

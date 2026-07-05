@@ -1,4 +1,4 @@
-import type { AppStatus, SetSettingResult } from './types'
+import type { AppStatus, DesktopApi, SetSettingResult } from './types'
 
 const mockSettings: Record<string, unknown> = {}
 
@@ -21,20 +21,23 @@ const mock = {
   },
 }
 
-function delay(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
+function wantsDesktop() {
+  return (
+    window.location.protocol === 'file:' ||
+    new URLSearchParams(window.location.search).get('desktop') === '1' ||
+    new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('desktop') === '1'
+  )
 }
+
+let desktopApi: Promise<DesktopApi> | undefined
 
 async function desktop() {
   if (window.pywebview?.api) return window.pywebview.api
+  if (!wantsDesktop()) return mock
 
-  // ponytail: pywebview has no reliable dev-mode signal here; wait 500ms before browser mock fallback.
-  for (let i = 0; i < 20; i++) {
-    await delay(25)
-    if (window.pywebview?.api) return window.pywebview.api
-  }
-
-  return mock
+  return (desktopApi ??= new Promise((resolve) => {
+    window.addEventListener('pywebviewready', () => resolve(window.pywebview!.api), { once: true })
+  }))
 }
 
 export const api = {
