@@ -82,3 +82,5 @@ desktop.ini
 
 # ===== Local scratch =====
 .tmp/
+# ===== Claude / Superpowers scratch =====
+.superpowers/
