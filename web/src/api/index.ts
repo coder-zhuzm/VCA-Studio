@@ -21,12 +21,25 @@ const mock = {
   },
 }
 
-function desktop() {
-  return window.pywebview?.api ?? mock
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+async function desktop() {
+  if (window.pywebview?.api) return window.pywebview.api
+
+  if (window.location.protocol === 'file:') {
+    for (let i = 0; i < 20; i++) {
+      await delay(25)
+      if (window.pywebview?.api) return window.pywebview.api
+    }
+  }
+
+  return mock
 }
 
 export const api = {
-  getAppStatus: () => desktop().get_app_status(),
-  getSettings: () => desktop().get_settings(),
-  setSetting: (key: string, value: unknown) => desktop().set_setting(key, value),
+  getAppStatus: async () => (await desktop()).get_app_status(),
+  getSettings: async () => (await desktop()).get_settings(),
+  setSetting: async (key: string, value: unknown) => (await desktop()).set_setting(key, value),
 }

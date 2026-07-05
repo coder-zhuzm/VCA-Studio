@@ -37,6 +37,7 @@ class JsonStore:
 class SettingsStore:
     def __init__(self, path: Path) -> None:
         self._store = JsonStore(path, {})
+        self._lock = threading.RLock()
 
     def all(self) -> dict[str, Any]:
         data = self._store.read()
@@ -46,6 +47,7 @@ class SettingsStore:
         return self.all().get(key, default)
 
     def set(self, key: str, value: Any) -> None:
-        data = self.all()
-        data[key] = value
-        self._store.write(data)
+        with self._lock:
+            data = self.all()
+            data[key] = value
+            self._store.write(data)
