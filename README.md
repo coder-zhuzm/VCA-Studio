@@ -1,26 +1,37 @@
 # VCA-Studio
 
-VCA-Studio 是一个面向 AI 翻唱工作流的桌面应用项目。当前项目参考并复刻自 [xb-svcb](https://github.com/SDIJF1521/xb-svcb)，但不会原样搬运全部功能；首要目标是先跑通更轻量、可维护的 **AI 翻唱核心闭环**。
+VCA-Studio 是一个开发中的桌面级 AI 翻唱工作台。项目规划参考 [xb-svcb](https://github.com/SDIJF1521/xb-svcb)，当前已支持桌面壳、运行环境路径管理与轻量检测，后续逐步接入 SVC/RVC 推理、混音和作品工作流。
 
-## 当前状态
+> GitHub 简介建议：开发中的桌面级 AI 翻唱工作台，已支持 Runtime 管理，逐步接入 SVC/RVC 推理与混音。  
+> English: A desktop AI vocal cover workstation in development, with runtime management and upcoming SVC/RVC inference and mixing.
 
-当前仓库已完成第一阶段基础骨架：
+## 当前进度
+
+当前已完成 **桌面基础壳 + Runtime Manager 第一版**：
 
 - ✅ React + Vite + TypeScript 前端骨架
+- ✅ Ant Design 基础布局
 - ✅ pywebview 桌面壳
 - ✅ 前后端 bridge：`window.pywebview.api.*`
 - ✅ 浏览器开发环境 mock fallback
 - ✅ JSON 本地 settings 存储
-- ✅ P0 页面占位：
-  - 首页 `/`
-  - 运行环境 `/runtime`
-  - 模型管理 `/models`
-  - 新建翻唱 `/create`
-  - 作品库 `/works`
-- ✅ 生产模式支持加载 `web/dist/index.html`
 - ✅ Windows / macOS / Linux 用户数据目录基础适配
+- ✅ 生产模式加载 `web/dist/index.html`
+- ✅ `/runtime` 运行环境页面
+- ✅ ffmpeg / ffprobe / SVC / RVC / UVR 轻量状态检测
+- ✅ 手动填写并保存 runtime 路径
 
-> 注意：当前还不能执行真实 AI 翻唱；SVC / RVC / UVR / ffmpeg 运行环境检测和推理链路还在后续阶段。
+当前还不能执行真实 AI 翻唱；模型导入、音频准备、SVC/RVC 推理、混音、作品队列仍在后续阶段。
+
+## 已有页面
+
+| 路由 | 状态 | 说明 |
+|---|---|---|
+| `/` | 已有占位 | 首页 / 应用状态 |
+| `/runtime` | 已实现第一版 | 运行环境路径保存与轻量检测 |
+| `/models` | 占位 | 后续导入 SVC / RVC 模型 |
+| `/create` | 占位 | 后续创建翻唱任务 |
+| `/works` | 占位 | 后续作品库、日志、导出 |
 
 ## Windows 本地启动
 
@@ -76,30 +87,70 @@ http://localhost:5173?desktop=1
 
 普通浏览器直接打开 `http://localhost:5173` 时会使用 mock API。
 
-## 已实现功能
+## Runtime Manager 当前能力
 
-### 桌面壳
+`/runtime` 页面用于先接入用户已有的本地 AI 运行环境。当前只做 **手动路径 + 轻量检测**。
 
-- 使用 `pywebview` 创建桌面窗口
-- 开发模式加载 Vite dev server
-- 生产模式加载 `web/dist/index.html`
-- 支持 pywebview JS API 注入
+### 可配置路径
 
-### 前端
+| Key | 说明 |
+|---|---|
+| `ffmpeg_path` | ffmpeg 可执行文件路径；留空时尝试 PATH |
+| `ffprobe_path` | ffprobe 可执行文件路径；留空时尝试 PATH |
+| `svc_python` | So-VITS-SVC 推理环境 Python |
+| `sovits_repo` | so-vits-svc 仓库目录 |
+| `rvc_python` | RVC 推理环境 Python |
+| `uvr_python` | UVR 分离环境 Python |
+| `uvr_model_dir` | UVR 模型目录 |
 
-- React 19 + TypeScript + Vite
-- Ant Design 基础布局
-- React Router HashRouter，兼容 `file://` 生产模式
-- 五个 P0 页面占位
+### 检测规则
 
-### 本地存储
+| 组件 | 当前检测 |
+|---|---|
+| ffmpeg | 路径存在，并能执行 `ffmpeg -version` |
+| ffprobe | 路径存在，并能执行 `ffprobe -version` |
+| SVC | `svc_python` 文件存在；`sovits_repo/inference/infer_tool.py` 存在 |
+| RVC | `rvc_python` 文件存在 |
+| UVR | `uvr_python` 文件存在；`uvr_model_dir` 是目录 |
 
-- JSON settings 存储
-- 写入使用临时文件替换
-- settings 读写有线程锁保护
-- 支持 `VCA_DATA_DIR` 覆盖数据目录
+### 当前不做
 
-默认数据目录：
+- 不自动安装 runtime
+- 不扫描整合包目录
+- 不检测 CUDA / GPU
+- 不检测 torch / fairseq / audio_separator import
+- 不下载模型
+- 不执行真实推理
+
+这些会在核心闭环后续阶段逐步补齐。
+
+## 技术结构
+
+```text
+VCA-Studio/
+├─ app/                         # Python 桌面壳 + bridge + 本地服务
+│  ├─ api/bridge.py             # pywebview JS API
+│  ├─ application/runtime_service.py
+│  ├─ infrastructure/storage.py # JSON settings 存储
+│  ├─ config.py                 # 应用信息、路径、数据目录
+│  └─ main.py                   # pywebview 入口
+├─ web/                         # React + Vite 前端
+│  └─ src/
+│     ├─ api/                   # bridge wrapper + 类型
+│     ├─ pages/                 # P0 页面
+│     ├─ App.tsx
+│     └─ main.tsx
+├─ docs/superpowers/            # 设计与实施计划
+├─ PROJECT_COPY_REPORT.md       # 复刻规划报告
+├─ README.md
+└─ LICENSE
+```
+
+## 本地数据目录
+
+支持 `VCA_DATA_DIR` 环境变量覆盖。
+
+默认路径：
 
 | 平台 | 默认路径 |
 |---|---|
@@ -107,11 +158,21 @@ http://localhost:5173?desktop=1
 | macOS | `~/Library/Application Support/VCA-Studio/.vca_studio` |
 | Linux | `$XDG_DATA_HOME/VCA-Studio/.vca_studio` 或 `~/.local/share/VCA-Studio/.vca_studio` |
 
-### 运行环境管理
+当前会写入：
 
-- `/runtime` 页面可查看 ffmpeg / ffprobe / SVC / RVC / UVR 状态
-- 支持手动填写并保存 runtime 路径
-- 当前仅做轻量检测，不做自动安装、CUDA 检测或整合包扫描
+```text
+settings.json
+```
+
+后续会继续加入：
+
+```text
+models.json
+works.json
+works/
+models/
+temp/
+```
 
 ## 后续规划
 
@@ -128,17 +189,16 @@ P0 目标是跑通 AI 翻唱核心闭环：
 → 日志可查、失败可重试
 ```
 
-计划顺序：
+### P0 剩余任务
 
-1. Runtime Manager：检测 ffmpeg / SVC / RVC / UVR，并保存用户选择路径
-2. ModelService：导入本地 So-VITS-SVC / RVC 模型
-3. StemPreparer：支持 `song` / `vocals` / `stems` 三种输入模式
-4. InferenceRunner：真实调用 SVC / RVC，不生成假结果
-5. MixService：有伴奏则混音，无伴奏输出 AI 干声
-6. WorkService：串行任务队列、状态、日志、失败重试
-7. 导出：WAV 必做，MP3 可选
+1. **ModelService**：导入本地 So-VITS-SVC / RVC 模型
+2. **StemPreparer**：支持 `song` / `vocals` / `stems` 三种输入模式
+3. **InferenceRunner**：真实调用 SVC / RVC，不生成假结果
+4. **MixService**：有伴奏则混音，无伴奏输出 AI 干声
+5. **WorkService**：串行任务队列、状态、日志、失败重试
+6. **导出**：WAV 必做，MP3 可选
 
-暂不作为 P0：
+### P0 暂不做
 
 - 在线曲库
 - ModelScope 模型站
@@ -162,7 +222,7 @@ VCA-Studio 会复用其产品经验和部分架构思路，例如：
 - So-VITS-SVC / RVC 推理子环境
 - 作品库与任务队列
 
-但 VCA-Studio 首版会刻意保持更小范围：先实现核心翻唱闭环，再扩展生态功能。
+但 VCA-Studio 首版会刻意保持更小范围：先实现核心翻唱闭环，再扩展多模型、编辑器和生态能力。
 
 ## 开源协议
 
