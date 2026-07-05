@@ -1,0 +1,12 @@
+[project]
+name = "vca-studio-app"
+version = "0.1.0"
+description = "VCA-Studio desktop backend"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pywebview>=6.2.1",
+]
+
+[tool.uv]
+package = false
