@@ -2,9 +2,6 @@
 
 VCA-Studio 是一个开发中的桌面级 AI 翻唱工作台。项目规划参考 [xb-svcb](https://github.com/SDIJF1521/xb-svcb)，当前已支持桌面壳、运行环境路径管理与轻量检测，后续逐步接入 SVC/RVC 推理、混音和作品工作流。
 
-> GitHub 简介建议：开发中的桌面级 AI 翻唱工作台，已支持 Runtime 管理，逐步接入 SVC/RVC 推理与混音。  
-> English: A desktop AI vocal cover workstation in development, with runtime management and upcoming SVC/RVC inference and mixing.
-
 ## 当前进度
 
 当前已完成 **桌面基础壳 + Runtime Manager 第一版**：
