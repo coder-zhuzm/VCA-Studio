@@ -84,3 +84,5 @@ desktop.ini
 .tmp/
 # ===== Claude / Superpowers scratch =====
 .superpowers/
+# ===== Claude worktrees =====
+.claude/worktrees/
