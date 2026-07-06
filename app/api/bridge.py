@@ -5,14 +5,16 @@ from __future__ import annotations
 from typing import Any
 
 import config
+from application.model_service import ModelService
 from application.runtime_service import RuntimeService
-from infrastructure.storage import SettingsStore
+from infrastructure.storage import ListRepository, SettingsStore
 
 
 class Api:
-    def __init__(self, settings: SettingsStore, runtime: RuntimeService) -> None:
+    def __init__(self, settings: SettingsStore, runtime: RuntimeService, models: ModelService) -> None:
         self._settings = settings
         self._runtime = runtime
+        self._models = models
         self._window = None
 
     def set_window(self, window) -> None:  # noqa: ANN001
@@ -43,8 +45,27 @@ class Api:
     def set_runtime_paths(self, paths: dict[str, Any]) -> dict[str, Any]:
         return self._runtime.set_paths(paths)
 
+    def list_models(self) -> list[dict[str, Any]]:
+        return self._models.list_models()
+
+    def import_model(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._models.import_model(payload or {})
+
+    def delete_model(self, model_id: str) -> dict[str, Any]:
+        return self._models.delete_model(model_id)
+
+    def check_model(self, model_id: str) -> dict[str, Any]:
+        return self._models.check_model(model_id)
+
+    def set_default_model(self, model_id: str) -> dict[str, Any]:
+        return self._models.set_default_model(model_id)
+
 
 def build_api() -> Api:
     config.ensure_data_dirs()
     settings = SettingsStore(config.SETTINGS_DB)
-    return Api(settings, RuntimeService(settings))
+    return Api(
+        settings,
+        RuntimeService(settings),
+        ModelService(ListRepository(config.MODELS_DB), config.MODELS_DIR),
+    )

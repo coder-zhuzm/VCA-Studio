@@ -39,10 +39,13 @@ def _default_data_dir() -> Path:
 
 DATA_DIR = _default_data_dir()
 SETTINGS_DB = DATA_DIR / "settings.json"
+MODELS_DIR = DATA_DIR / "models"
+MODELS_DB = DATA_DIR / "models.json"
 
 
 def ensure_data_dirs() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def subprocess_no_window() -> dict:

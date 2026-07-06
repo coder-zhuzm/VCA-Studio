@@ -57,3 +57,41 @@ class SettingsStore:
             data = self.all()
             data.update(values)
             self._store.write(data)
+
+
+class ListRepository:
+    def __init__(self, path: Path) -> None:
+        self._store = JsonStore(path, [])
+        self._lock = threading.RLock()
+
+    def all(self) -> list[dict[str, Any]]:
+        with self._lock:
+            data = self._store.read()
+            return data if isinstance(data, list) else []
+
+    def get(self, item_id: str) -> dict[str, Any] | None:
+        return next((item for item in self.all() if item.get("id") == item_id), None)
+
+    def add(self, item: dict[str, Any]) -> dict[str, Any]:
+        with self._lock:
+            items = self.all()
+            items.insert(0, item)
+            self._store.write(items)
+            return item
+
+    def update_item(self, item_id: str, item: dict[str, Any]) -> None:
+        with self._lock:
+            items = self.all()
+            for index, current in enumerate(items):
+                if current.get("id") == item_id:
+                    items[index] = item
+                    self._store.write(items)
+                    return
+
+    def replace_all(self, items: list[dict[str, Any]]) -> None:
+        with self._lock:
+            self._store.write(items)
+
+    def remove(self, item_id: str) -> None:
+        with self._lock:
+            self._store.write([item for item in self.all() if item.get("id") != item_id])
