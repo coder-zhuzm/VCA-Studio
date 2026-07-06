@@ -1,6 +1,17 @@
-import type { AppStatus, DesktopApi, RuntimeComponentStatus, RuntimeStatus, SetRuntimePathResult, SetSettingResult } from './types'
+import type {
+  AppStatus,
+  DesktopApi,
+  ImportModelPayload,
+  ModelMutationResult,
+  ModelRecord,
+  RuntimeComponentStatus,
+  RuntimeStatus,
+  SetRuntimePathResult,
+  SetSettingResult,
+} from './types'
 
 const mockSettings: Record<string, unknown> = {}
+const mockModels: ModelRecord[] = []
 
 const mockRuntimePaths: Record<string, string> = {
   ffmpeg_path: '',
@@ -57,6 +68,40 @@ const mock = {
     Object.assign(mockRuntimePaths, paths)
     return { ok: true, ...mockRuntimeStatus() }
   },
+  async list_models(): Promise<ModelRecord[]> {
+    return mockModels
+  },
+  async import_model(payload: ImportModelPayload): Promise<ModelMutationResult> {
+    const now = new Date().toISOString()
+    const model: ModelRecord = {
+      id: `model_${Date.now()}`,
+      name: payload.name || payload.framework,
+      framework: payload.framework,
+      files: Object.fromEntries(Object.entries(payload).filter(([key, value]) => key.endsWith('_path') && value)) as Record<string, string>,
+      status: 'ready',
+      is_default: mockModels.length === 0,
+      created_at: now,
+      updated_at: now,
+      checks: [],
+    }
+    mockModels.unshift(model)
+    return { ok: true, model }
+  },
+  async delete_model(id: string): Promise<ModelMutationResult> {
+    const index = mockModels.findIndex((model) => model.id === id)
+    const wasDefault = index >= 0 && mockModels[index].is_default
+    if (index >= 0) mockModels.splice(index, 1)
+    if (wasDefault && mockModels[0]) mockModels[0].is_default = true
+    return { ok: true, models: mockModels }
+  },
+  async check_model(id: string): Promise<ModelMutationResult> {
+    const model = mockModels.find((item) => item.id === id)
+    return model ? { ok: true, model } : { ok: false, error: '模型不存在。' }
+  },
+  async set_default_model(id: string): Promise<ModelMutationResult> {
+    for (const model of mockModels) model.is_default = model.id === id
+    return { ok: true, models: mockModels }
+  },
 }
 
 function wantsDesktop() {
@@ -85,4 +130,9 @@ export const api = {
   getRuntimeStatus: async () => (await desktop()).get_runtime_status(),
   setRuntimePath: async (key: string, path: string) => (await desktop()).set_runtime_path(key, path),
   setRuntimePaths: async (paths: Record<string, string>) => (await desktop()).set_runtime_paths(paths),
+  listModels: async () => (await desktop()).list_models(),
+  importModel: async (payload: ImportModelPayload) => (await desktop()).import_model(payload),
+  deleteModel: async (id: string) => (await desktop()).delete_model(id),
+  checkModel: async (id: string) => (await desktop()).check_model(id),
+  setDefaultModel: async (id: string) => (await desktop()).set_default_model(id),
 }
