@@ -847,18 +847,24 @@ P0/P1 只支持：
 ### P0 必做
 
 ```text
-Runtime 深度检测
-RVC 模型导入
-三种输入模式
-_prepare_stems
-UVR 分离
-RVC 推理
-ffmpeg 混音
-作品库
-任务队列
-日志
-WAV 导出
+[x] Runtime 深度检测
+[x] RVC 模型导入
+[x] 三种输入模式
+[x] _prepare_stems（当前为输入复制/可选 ffmpeg WAV 规范化）
+[ ] UVR 分离
+[ ] RVC 推理
+[ ] ffmpeg 混音
+[x] 作品库
+[ ] 任务队列
+[x] 日志
+[x] WAV 导出（导出已有 output/final.wav；真实生成待推理/混音接入）
 ```
+
+### 当前 P0 进度确认（2026-07-07）
+
+已完成可追踪的管理闭环：Runtime 路径与深度检测、模型导入与目录操作、三种输入模式创建 work、输入文件准备、作品列表/详情/步骤/进度/日志、失败重试、删除、重命名、打开目录/日志、导出已有输出文件。
+
+下一步最短路径：先接 `InferenceRunner` 的最小 RVC 调用；`song` 模式的 UVR 分离和有伴奏混音随后补齐。
 
 ### P1 必做
 
