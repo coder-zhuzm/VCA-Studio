@@ -2,13 +2,27 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+import sys
 from typing import Any
 
-import config
-from application.model_service import ModelService
-from application.runtime_service import RuntimeService
-from application.stem_preparer import StemPreparer
-from infrastructure.storage import ListRepository, SettingsStore
+try:
+    import config
+    from application.model_service import ModelService
+    from application.runtime_service import RuntimeService
+    from application.stem_preparer import StemPreparer
+    from application.work_service import WorkService
+    from infrastructure.storage import ListRepository, SettingsStore
+except ModuleNotFoundError:
+    app_dir = Path(__file__).resolve().parents[1]
+    if str(app_dir) not in sys.path:
+        sys.path.insert(0, str(app_dir))
+    import config
+    from application.model_service import ModelService
+    from application.runtime_service import RuntimeService
+    from application.stem_preparer import StemPreparer
+    from application.work_service import WorkService
+    from infrastructure.storage import ListRepository, SettingsStore
 
 
 class Api:
@@ -18,11 +32,13 @@ class Api:
         runtime: RuntimeService,
         models: ModelService,
         stem_preparer: StemPreparer,
+        works: WorkService,
     ) -> None:
         self._settings = settings
         self._runtime = runtime
         self._models = models
         self._stem_preparer = stem_preparer
+        self._works = works
         self._window = None
 
     def set_window(self, window) -> None:  # noqa: ANN001
@@ -71,13 +87,24 @@ class Api:
     def prepare_stems(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._stem_preparer.prepare(payload or {})
 
+    def create_work(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._works.create_work(payload or {})
+
+    def list_works(self) -> dict[str, Any]:
+        return self._works.list_works()
+
+    def get_work(self, work_id: str) -> dict[str, Any]:
+        return self._works.get_work(work_id)
+
 
 def build_api() -> Api:
     config.ensure_data_dirs()
     settings = SettingsStore(config.SETTINGS_DB)
+    stem_preparer = StemPreparer(config.WORKS_DIR)
     return Api(
         settings,
         RuntimeService(settings),
         ModelService(ListRepository(config.MODELS_DB), config.MODELS_DIR),
-        StemPreparer(config.WORKS_DIR),
+        stem_preparer,
+        WorkService(ListRepository(config.WORKS_DB), stem_preparer),
     )
