@@ -30,25 +30,29 @@ class WorkService:
             return {"ok": False, "error": str(prepared.get("error") or "输入准备失败。")}
 
         created_at = _now()
+        input_files = self._input_files(prepared.get("files") or {}, payload)
+        work_dir = self._work_dir_from_input_files(input_files)
+        log_entry = {
+            "level": "info",
+            "message": "Input prepared",
+            "created_at": created_at,
+        }
         record = {
             "id": str(prepared["work_id"]),
             "name": str(payload.get("name") or "").strip() or "Untitled Work",
             "input_mode": str(prepared["mode"]),
-            "input_files": self._input_files(prepared.get("files") or {}, payload),
+            "input_files": input_files,
             "status": "pending",
             "stage": "prepared",
-            "logs": [
-                {
-                    "level": "info",
-                    "message": "Input prepared",
-                    "created_at": created_at,
-                }
-            ],
+            "logs": [log_entry],
+            "work_dir": str(work_dir) if work_dir else "",
+            "log_path": str(work_dir / "run.log") if work_dir else "",
             "created_at": created_at,
             "updated_at": created_at,
         }
 
         try:
+            self._write_log(record, log_entry)
             self._repo.add(record)
         except OSError as exc:
             self._cleanup_work_dir(record)
@@ -63,6 +67,30 @@ class WorkService:
         if not work:
             return {"ok": False, "error": "Work not found"}
         return {"ok": True, "work": work}
+
+    def delete_work(self, work_id: str) -> dict[str, Any]:
+        work = self._repo.get(str(work_id))
+        if not work:
+            return {"ok": False, "error": "Work not found"}
+        self._cleanup_work_dir(work)
+        self._repo.remove(str(work_id))
+        return {"ok": True, "works": self._repo.all()}
+
+    def read_work_log(self, work_id: str) -> dict[str, Any]:
+        work = self._repo.get(str(work_id))
+        if not work:
+            return {"ok": False, "error": "Work not found"}
+        log_path = str(work.get("log_path") or "").strip()
+        if not log_path:
+            return {"ok": False, "error": "Work log not found"}
+        path = Path(log_path)
+        if not path.is_file():
+            return {"ok": False, "error": "Work log not found"}
+        try:
+            content = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True, "work_id": str(work_id), "log_path": log_path, "content": content}
 
     def _input_files(self, files: dict[str, str], payload: dict[str, Any]) -> list[dict[str, str]]:
         sources = {
@@ -82,8 +110,41 @@ class WorkService:
             )
         return result
 
+    def _write_log(self, record: dict[str, Any], log_entry: dict[str, str]) -> None:
+        log_path = str(record.get("log_path") or "")
+        if not log_path:
+            return
+        path = Path(log_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            f"{log_entry['created_at']} [{log_entry['level']}] {log_entry['message']}\n",
+            encoding="utf-8",
+        )
+
     def _cleanup_work_dir(self, record: dict[str, Any]) -> None:
-        files = record.get("input_files") or []
+        work_dir = self._work_dir_from_record(record)
+        if work_dir and self._is_safe_work_dir(work_dir):
+            shutil.rmtree(work_dir, ignore_errors=True)
+
+    def _work_dir_from_record(self, record: dict[str, Any]) -> Path | None:
+        work_dir = str(record.get("work_dir") or "").strip()
+        if work_dir:
+            return Path(work_dir)
+        return self._work_dir_from_input_files(record.get("input_files") or [])
+
+    def _work_dir_from_input_files(self, files: list[dict[str, Any]]) -> Path | None:
         first = next((item.get("stored_path") for item in files if item.get("stored_path")), "")
-        if first:
-            shutil.rmtree(Path(str(first)).parent.parent, ignore_errors=True)
+        if not first:
+            return None
+        return Path(str(first)).parent.parent
+
+    def _is_safe_work_dir(self, work_dir: Path) -> bool:
+        root = getattr(self._stem_preparer, "_works_dir", None)
+        if root is None:
+            return work_dir.name.startswith("work_")
+        try:
+            resolved = work_dir.resolve()
+            works_root = Path(root).resolve()
+        except OSError:
+            return False
+        return resolved.name.startswith("work_") and resolved.is_relative_to(works_root)

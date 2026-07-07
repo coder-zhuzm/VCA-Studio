@@ -78,6 +78,60 @@ export interface ModelMutationResult {
   models?: ModelRecord[]
 }
 
+export type WorkInputMode = 'song' | 'vocals' | 'stems'
+export type WorkStatus = 'pending' | 'running' | 'done' | 'failed'
+export type WorkStage = 'prepared' | 'queued' | 'inferencing' | 'mixing' | 'exported' | 'failed'
+
+export interface WorkInputFile {
+  role: string
+  source_path: string
+  stored_path: string
+  filename: string
+}
+
+export interface WorkLog {
+  level: string
+  message: string
+  created_at: string
+}
+
+export interface WorkRecord {
+  id: string
+  name: string
+  input_mode: WorkInputMode
+  input_files: WorkInputFile[]
+  status: WorkStatus
+  stage: WorkStage
+  logs: WorkLog[]
+  work_dir?: string
+  log_path?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateWorkPayload {
+  name: string
+  mode: WorkInputMode
+  song_path?: string
+  vocals_path?: string
+  instrumental_path?: string
+}
+
+export interface WorkMutationResult {
+  ok: boolean
+  error?: string
+  work?: WorkRecord
+  works?: WorkRecord[]
+}
+
+export interface WorkLogContentResult {
+  ok: boolean
+  error?: string
+  work_id?: string
+  log_path?: string
+  content?: string
+}
+
 export interface DesktopApi {
   get_app_status: () => Promise<AppStatus>
   get_settings: () => Promise<Record<string, unknown>>
@@ -90,6 +144,11 @@ export interface DesktopApi {
   delete_model: (id: string) => Promise<ModelMutationResult>
   check_model: (id: string) => Promise<ModelMutationResult>
   set_default_model: (id: string) => Promise<ModelMutationResult>
+  create_work: (payload: CreateWorkPayload) => Promise<WorkMutationResult>
+  list_works: () => Promise<WorkMutationResult>
+  get_work: (workId: string) => Promise<WorkMutationResult>
+  delete_work: (workId: string) => Promise<WorkMutationResult>
+  read_work_log: (workId: string) => Promise<WorkLogContentResult>
 }
 
 declare global {

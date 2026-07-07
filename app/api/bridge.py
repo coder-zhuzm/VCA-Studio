@@ -96,6 +96,12 @@ class Api:
     def get_work(self, work_id: str) -> dict[str, Any]:
         return self._works.get_work(work_id)
 
+    def delete_work(self, work_id: str) -> dict[str, Any]:
+        return self._works.delete_work(work_id)
+
+    def read_work_log(self, work_id: str) -> dict[str, Any]:
+        return self._works.read_work_log(work_id)
+
 
 def build_api() -> Api:
     config.ensure_data_dirs()

@@ -1,5 +1,6 @@
 import type {
   AppStatus,
+  CreateWorkPayload,
   DesktopApi,
   ImportModelPayload,
   ModelMutationResult,
@@ -8,10 +9,14 @@ import type {
   RuntimeStatus,
   SetRuntimePathResult,
   SetSettingResult,
+  WorkLogContentResult,
+  WorkMutationResult,
+  WorkRecord,
 } from './types'
 
 const mockSettings: Record<string, unknown> = {}
 const mockModels: ModelRecord[] = []
+const mockWorks: WorkRecord[] = []
 
 const mockRuntimePaths: Record<string, string> = {
   ffmpeg_path: '',
@@ -102,6 +107,58 @@ const mock = {
     for (const model of mockModels) model.is_default = model.id === id
     return { ok: true, models: mockModels }
   },
+  async create_work(payload: CreateWorkPayload): Promise<WorkMutationResult> {
+    const now = new Date().toISOString()
+    const workId = `work_${Date.now()}`
+    const files = [
+      payload.song_path ? ['input_song', payload.song_path] : undefined,
+      payload.vocals_path ? ['vocals', payload.vocals_path] : undefined,
+      payload.instrumental_path ? ['instrumental', payload.instrumental_path] : undefined,
+    ].filter(Boolean) as [string, string][]
+    const work: WorkRecord = {
+      id: workId,
+      name: payload.name || 'Untitled Work',
+      input_mode: payload.mode,
+      input_files: files.map(([role, path]) => ({
+        role,
+        source_path: path,
+        stored_path: path,
+        filename: path.split(/[\\/]/).pop() || path,
+      })),
+      status: 'pending',
+      stage: 'prepared',
+      logs: [{ level: 'info', message: 'Input prepared', created_at: now }],
+      work_dir: `.vca_studio/works/${workId}`,
+      log_path: `.vca_studio/works/${workId}/run.log`,
+      created_at: now,
+      updated_at: now,
+    }
+    mockWorks.unshift(work)
+    return { ok: true, work }
+  },
+  async list_works(): Promise<WorkMutationResult> {
+    return { ok: true, works: mockWorks }
+  },
+  async get_work(workId: string): Promise<WorkMutationResult> {
+    const work = mockWorks.find((item) => item.id === workId)
+    return work ? { ok: true, work } : { ok: false, error: 'Work not found' }
+  },
+  async delete_work(workId: string): Promise<WorkMutationResult> {
+    const index = mockWorks.findIndex((item) => item.id === workId)
+    if (index < 0) return { ok: false, error: 'Work not found' }
+    mockWorks.splice(index, 1)
+    return { ok: true, works: mockWorks }
+  },
+  async read_work_log(workId: string): Promise<WorkLogContentResult> {
+    const work = mockWorks.find((item) => item.id === workId)
+    if (!work) return { ok: false, error: 'Work not found' }
+    return {
+      ok: true,
+      work_id: work.id,
+      log_path: work.log_path,
+      content: work.logs.map((log) => `${log.created_at} [${log.level}] ${log.message}`).join('\n'),
+    }
+  },
 }
 
 function wantsDesktop() {
@@ -135,4 +192,9 @@ export const api = {
   deleteModel: async (id: string) => (await desktop()).delete_model(id),
   checkModel: async (id: string) => (await desktop()).check_model(id),
   setDefaultModel: async (id: string) => (await desktop()).set_default_model(id),
+  createWork: async (payload: CreateWorkPayload) => (await desktop()).create_work(payload),
+  listWorks: async () => (await desktop()).list_works(),
+  getWork: async (workId: string) => (await desktop()).get_work(workId),
+  deleteWork: async (workId: string) => (await desktop()).delete_work(workId),
+  readWorkLog: async (workId: string) => (await desktop()).read_work_log(workId),
 }
