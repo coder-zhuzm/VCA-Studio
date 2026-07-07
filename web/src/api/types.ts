@@ -99,6 +99,7 @@ export interface WorkRecord {
   id: string
   name: string
   model_id?: string
+  params?: WorkParams
   input_mode: WorkInputMode
   input_files: WorkInputFile[]
   status: WorkStatus
@@ -113,10 +114,16 @@ export interface WorkRecord {
 export interface CreateWorkPayload {
   name: string
   model_id: string
+  params?: WorkParams
   mode: WorkInputMode
   song_path?: string
   vocals_path?: string
   instrumental_path?: string
+}
+
+export interface WorkParams {
+  transpose: number
+  f0_method: string
 }
 
 export interface WorkMutationResult {

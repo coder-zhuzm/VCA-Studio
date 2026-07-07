@@ -119,6 +119,7 @@ const mock = {
       id: workId,
       name: payload.name || 'Untitled Work',
       model_id: payload.model_id,
+      params: payload.params,
       input_mode: payload.mode,
       input_files: files.map(([role, path]) => ({
         role,

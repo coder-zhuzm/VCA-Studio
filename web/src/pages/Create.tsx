@@ -1,4 +1,4 @@
-import { Button, Card, Descriptions, Form, Input, Select, Space, Tag, Typography, message } from 'antd'
+import { Button, Card, Descriptions, Form, Input, InputNumber, Select, Space, Tag, Typography, message } from 'antd'
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import type { CreateWorkPayload, ModelRecord, WorkInputMode, WorkRecord } from '../api/types'
@@ -14,6 +14,7 @@ export function Create() {
     const payload: CreateWorkPayload = {
       name: values.name,
       model_id: values.model_id,
+      params: values.params,
       mode: values.mode,
       ...(values.mode === 'song' ? { song_path: values.song_path } : {}),
       ...(values.mode === 'vocals' ? { vocals_path: values.vocals_path } : {}),
@@ -44,7 +45,7 @@ export function Create() {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <Card title="新建翻唱">
-        <Form form={form} layout="vertical" onFinish={createWork} initialValues={{ mode: 'song' }}>
+        <Form form={form} layout="vertical" onFinish={createWork} initialValues={{ mode: 'song', params: { transpose: 0, f0_method: 'rmvpe' } }}>
           <Form.Item name="name" label="作品名称" rules={[{ required: true, message: '请输入作品名称' }]}>
             <Input placeholder="例如：Demo Cover" allowClear />
           </Form.Item>
@@ -63,6 +64,18 @@ export function Create() {
                 { value: 'song', label: 'Song' },
                 { value: 'vocals', label: 'Vocals' },
                 { value: 'stems', label: 'Stems' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name={['params', 'transpose']} label="变调">
+            <InputNumber style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name={['params', 'f0_method']} label="F0 方法">
+            <Select
+              options={[
+                { value: 'rmvpe', label: 'rmvpe' },
+                { value: 'harvest', label: 'harvest' },
+                { value: 'crepe', label: 'crepe' },
               ]}
             />
           </Form.Item>
@@ -97,6 +110,9 @@ export function Create() {
             </Descriptions.Item>
             <Descriptions.Item label="模型">
               <Typography.Text copyable>{createdWork.model_id || '-'}</Typography.Text>
+            </Descriptions.Item>
+            <Descriptions.Item label="参数">
+              {createdWork.params ? `${createdWork.params.transpose}, ${createdWork.params.f0_method}` : '-'}
             </Descriptions.Item>
             <Descriptions.Item label="状态">
               <Tag color="blue">{createdWork.status}</Tag>

@@ -157,6 +157,9 @@ export function Works() {
               <Descriptions.Item label="模型">
                 <Typography.Text copyable>{selectedWork.model_id || '-'}</Typography.Text>
               </Descriptions.Item>
+              <Descriptions.Item label="参数">
+                {selectedWork.params ? `${selectedWork.params.transpose}, ${selectedWork.params.f0_method}` : '-'}
+              </Descriptions.Item>
               <Descriptions.Item label="输入模式">{selectedWork.input_mode}</Descriptions.Item>
               <Descriptions.Item label="状态">
                 <Tag color={STATUS_COLOR[selectedWork.status]}>{selectedWork.status}</Tag>

@@ -41,6 +41,7 @@ class WorkService:
             "id": str(prepared["work_id"]),
             "name": str(payload.get("name") or "").strip() or "Untitled Work",
             "model_id": str(payload.get("model_id") or "").strip(),
+            "params": payload.get("params") if isinstance(payload.get("params"), dict) else {},
             "input_mode": str(prepared["mode"]),
             "input_files": input_files,
             "status": "pending",
