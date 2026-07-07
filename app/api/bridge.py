@@ -2,14 +2,27 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+import sys
 from typing import Any
 
-import config
-from application.model_service import ModelService
-from application.runtime_service import RuntimeService
-from application.stem_preparer import StemPreparer
-from application.work_service import WorkService
-from infrastructure.storage import ListRepository, SettingsStore
+try:
+    import config
+    from application.model_service import ModelService
+    from application.runtime_service import RuntimeService
+    from application.stem_preparer import StemPreparer
+    from application.work_service import WorkService
+    from infrastructure.storage import ListRepository, SettingsStore
+except ModuleNotFoundError:
+    app_dir = Path(__file__).resolve().parents[1]
+    if str(app_dir) not in sys.path:
+        sys.path.insert(0, str(app_dir))
+    import config
+    from application.model_service import ModelService
+    from application.runtime_service import RuntimeService
+    from application.stem_preparer import StemPreparer
+    from application.work_service import WorkService
+    from infrastructure.storage import ListRepository, SettingsStore
 
 
 class Api:
