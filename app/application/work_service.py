@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from application.runtime_service import RuntimeService
 from application.stem_preparer import StemPreparer
 from infrastructure.storage import ListRepository
 
@@ -15,16 +16,59 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _params(payload: dict[str, Any]) -> dict[str, Any]:
+    params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
+    f0_method = str(params.get("f0_method") or "rmvpe").strip()
+    if f0_method not in {"rmvpe", "harvest", "crepe"}:
+        f0_method = "rmvpe"
+    device = str(params.get("device") or "auto").strip()
+    if device not in {"auto", "cpu", "cuda", "mps"}:
+        device = "auto"
+    try:
+        transpose = int(params.get("transpose") or 0)
+    except (TypeError, ValueError):
+        transpose = 0
+
+    def number(key: str, default: float) -> float:
+        try:
+            return float(params.get(key, default))
+        except (TypeError, ValueError):
+            return default
+
+    return {
+        "transpose": transpose,
+        "f0_method": f0_method,
+        "index_rate": number("index_rate", 0.75),
+        "rms_mix_rate": number("rms_mix_rate", 1),
+        "protect": number("protect", 0.33),
+        "filter_radius": int(number("filter_radius", 3)),
+        "device": device,
+    }
+
+
 class WorkService:
-    def __init__(self, repo: ListRepository, stem_preparer: StemPreparer) -> None:
+    def __init__(
+        self,
+        repo: ListRepository,
+        stem_preparer: StemPreparer,
+        model_repo: ListRepository | None = None,
+        runtime: RuntimeService | None = None,
+    ) -> None:
         self._repo = repo
         self._stem_preparer = stem_preparer
+        self._model_repo = model_repo
+        self._runtime = runtime
 
     def create_work(self, payload: dict[str, Any]) -> dict[str, Any]:
         if payload is None:
             payload = {}
         if not isinstance(payload, dict):
             return {"ok": False, "error": "无效的创建参数。"}
+        model_id = str(payload.get("model_id") or "").strip()
+        if not model_id:
+            return {"ok": False, "error": "缺少目标模型。"}
+        if self._model_repo and not self._model_repo.get(model_id):
+            return {"ok": False, "error": "目标模型不存在。"}
         prepared = self._stem_preparer.prepare(payload)
         if not prepared.get("ok"):
             return {"ok": False, "error": str(prepared.get("error") or "输入准备失败。")}
@@ -41,7 +85,7 @@ class WorkService:
             "id": str(prepared["work_id"]),
             "name": str(payload.get("name") or "").strip() or "Untitled Work",
             "model_id": str(payload.get("model_id") or "").strip(),
-            "params": payload.get("params") if isinstance(payload.get("params"), dict) else {},
+            "params": _params(payload),
             "input_mode": str(prepared["mode"]),
             "input_files": input_files,
             "status": "pending",
@@ -54,7 +98,7 @@ class WorkService:
         }
 
         try:
-            self._write_log(record, log_entry)
+            self._append_log(record, log_entry)
             self._repo.add(record)
         except OSError as exc:
             self._cleanup_work_dir(record)
@@ -69,6 +113,19 @@ class WorkService:
         if not work:
             return {"ok": False, "error": "Work not found"}
         return {"ok": True, "work": work}
+
+    def start_work(self, work_id: str) -> dict[str, Any]:
+        work = self._repo.get(str(work_id))
+        if not work:
+            return {"ok": False, "error": "Work not found"}
+        if work.get("status") != "pending" or work.get("stage") != "prepared":
+            return {"ok": True, "work": work}
+
+        error = self._start_blocker(work)
+        if error:
+            return {"ok": True, "work": self._fail_work(work, error)}
+
+        return {"ok": True, "work": self._fail_work(work, "真实 RVC 推理尚未接入。")}
 
     def delete_work(self, work_id: str) -> dict[str, Any]:
         work = self._repo.get(str(work_id))
@@ -112,16 +169,48 @@ class WorkService:
             )
         return result
 
-    def _write_log(self, record: dict[str, Any], log_entry: dict[str, str]) -> None:
+    def _start_blocker(self, work: dict[str, Any]) -> str:
+        model = self._model_repo.get(str(work.get("model_id") or "")) if self._model_repo else None
+        if not model:
+            return "目标模型不存在。"
+        if model.get("framework") != "rvc":
+            return "P0 当前只支持 RVC 推理。"
+        checkpoint = str((model.get("files") or {}).get("checkpoint") or "")
+        if not checkpoint or not Path(checkpoint).is_file():
+            return "RVC 主模型文件缺失。"
+        if work.get("input_mode") == "song":
+            return "完整歌曲输入还未接入 UVR 分离，请先使用已分离人声。"
+        vocals = next((item for item in work.get("input_files") or [] if item.get("role") == "vocals"), None)
+        vocals_path = str((vocals or {}).get("stored_path") or "")
+        if not vocals_path or not Path(vocals_path).is_file():
+            return "人声输入文件缺失。"
+        if self._runtime:
+            rvc = self._runtime.check_component("rvc")
+            if rvc.get("status") != "ready":
+                return f"RVC runtime 未就绪：{rvc.get('message') or '未配置'}"
+        return ""
+
+    def _fail_work(self, work: dict[str, Any], message: str) -> dict[str, Any]:
+        entry = {"level": "error", "message": message, "created_at": _now()}
+        updated = {
+            **work,
+            "status": "failed",
+            "stage": "failed",
+            "logs": [*(work.get("logs") or []), entry],
+            "updated_at": entry["created_at"],
+        }
+        self._append_log(updated, entry)
+        self._repo.update_item(str(updated["id"]), updated)
+        return updated
+
+    def _append_log(self, record: dict[str, Any], log_entry: dict[str, str]) -> None:
         log_path = str(record.get("log_path") or "")
         if not log_path:
             return
         path = Path(log_path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            f"{log_entry['created_at']} [{log_entry['level']}] {log_entry['message']}\n",
-            encoding="utf-8",
-        )
+        with path.open("a", encoding="utf-8") as file:
+            file.write(f"{log_entry['created_at']} [{log_entry['level']}] {log_entry['message']}\n")
 
     def _cleanup_work_dir(self, record: dict[str, Any]) -> None:
         work_dir = self._work_dir_from_record(record)

@@ -45,7 +45,23 @@ export function Create() {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <Card title="新建翻唱">
-        <Form form={form} layout="vertical" onFinish={createWork} initialValues={{ mode: 'song', params: { transpose: 0, f0_method: 'rmvpe' } }}>
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={createWork}
+          initialValues={{
+            mode: 'song',
+            params: {
+              transpose: 0,
+              f0_method: 'rmvpe',
+              index_rate: 0.75,
+              rms_mix_rate: 1,
+              protect: 0.33,
+              filter_radius: 3,
+              device: 'auto',
+            },
+          }}
+        >
           <Form.Item name="name" label="作品名称" rules={[{ required: true, message: '请输入作品名称' }]}>
             <Input placeholder="例如：Demo Cover" allowClear />
           </Form.Item>
@@ -67,15 +83,37 @@ export function Create() {
               ]}
             />
           </Form.Item>
-          <Form.Item name={['params', 'transpose']} label="变调">
+          <Form.Item name={['params', 'transpose']} label="变调" rules={[{ required: true, message: '请输入变调值' }]}>
             <InputNumber style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name={['params', 'f0_method']} label="F0 方法">
+          <Form.Item name={['params', 'f0_method']} label="F0 方法" rules={[{ required: true, message: '请选择 F0 方法' }]}>
             <Select
               options={[
                 { value: 'rmvpe', label: 'rmvpe' },
                 { value: 'harvest', label: 'harvest' },
                 { value: 'crepe', label: 'crepe' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name={['params', 'index_rate']} label="Index Rate" rules={[{ required: true, message: '请输入 Index Rate' }]}>
+            <InputNumber min={0} max={1} step={0.05} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name={['params', 'rms_mix_rate']} label="RMS Mix Rate" rules={[{ required: true, message: '请输入 RMS Mix Rate' }]}>
+            <InputNumber min={0} max={1} step={0.05} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name={['params', 'protect']} label="Protect" rules={[{ required: true, message: '请输入 Protect' }]}>
+            <InputNumber min={0} max={0.5} step={0.01} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name={['params', 'filter_radius']} label="Filter Radius" rules={[{ required: true, message: '请输入 Filter Radius' }]}>
+            <InputNumber min={0} step={1} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name={['params', 'device']} label="设备" rules={[{ required: true, message: '请选择设备' }]}>
+            <Select
+              options={[
+                { value: 'auto', label: 'auto' },
+                { value: 'cpu', label: 'cpu' },
+                { value: 'cuda', label: 'cuda' },
+                { value: 'mps', label: 'mps' },
               ]}
             />
           </Form.Item>
@@ -112,7 +150,7 @@ export function Create() {
               <Typography.Text copyable>{createdWork.model_id || '-'}</Typography.Text>
             </Descriptions.Item>
             <Descriptions.Item label="参数">
-              {createdWork.params ? `${createdWork.params.transpose}, ${createdWork.params.f0_method}` : '-'}
+              {createdWork.params ? JSON.stringify(createdWork.params) : '-'}
             </Descriptions.Item>
             <Descriptions.Item label="状态">
               <Tag color="blue">{createdWork.status}</Tag>

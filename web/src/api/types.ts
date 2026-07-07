@@ -124,6 +124,11 @@ export interface CreateWorkPayload {
 export interface WorkParams {
   transpose: number
   f0_method: string
+  index_rate: number
+  rms_mix_rate: number
+  protect: number
+  filter_radius: number
+  device: string
 }
 
 export interface WorkMutationResult {
@@ -156,6 +161,7 @@ export interface DesktopApi {
   create_work: (payload: CreateWorkPayload) => Promise<WorkMutationResult>
   list_works: () => Promise<WorkMutationResult>
   get_work: (workId: string) => Promise<WorkMutationResult>
+  start_work: (workId: string) => Promise<WorkMutationResult>
   delete_work: (workId: string) => Promise<WorkMutationResult>
   read_work_log: (workId: string) => Promise<WorkLogContentResult>
 }

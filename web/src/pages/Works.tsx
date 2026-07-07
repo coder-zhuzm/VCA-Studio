@@ -24,6 +24,7 @@ export function Works() {
   const [selectedWork, setSelectedWork] = useState<WorkRecord>()
   const [loading, setLoading] = useState(false)
   const [detailLoadingId, setDetailLoadingId] = useState<string>()
+  const [startingId, setStartingId] = useState<string>()
   const [deletingId, setDeletingId] = useState<string>()
   const [logContent, setLogContent] = useState('')
   const [logLoading, setLogLoading] = useState(false)
@@ -87,6 +88,29 @@ export function Works() {
     }
   }
 
+  async function startWork(workId: string) {
+    setStartingId(workId)
+    try {
+      const result = await api.startWork(workId)
+      if (!result.ok || !result.work) {
+        message.error(result.error ?? '启动失败')
+        return
+      }
+      setWorks((items) => items.map((item) => (item.id === workId ? result.work! : item)))
+      if (selectedWork?.id === workId) {
+        setSelectedWork(result.work)
+        await loadLog(workId)
+      }
+      if (result.work.status === 'failed') {
+        message.warning(result.work.logs.at(-1)?.message ?? '运行失败')
+      } else {
+        message.success('已开始运行')
+      }
+    } finally {
+      setStartingId(undefined)
+    }
+  }
+
   useEffect(() => {
     void refresh()
   }, [])
@@ -125,6 +149,14 @@ export function Works() {
               title: '操作',
               render: (_, row) => (
                 <Space>
+                  <Button
+                    size="small"
+                    onClick={() => startWork(row.id)}
+                    loading={startingId === row.id}
+                    disabled={row.status !== 'pending' || row.stage !== 'prepared'}
+                  >
+                    开始
+                  </Button>
                   <Button size="small" onClick={() => openDetails(row.id)} loading={detailLoadingId === row.id}>
                     查看
                   </Button>
@@ -158,7 +190,7 @@ export function Works() {
                 <Typography.Text copyable>{selectedWork.model_id || '-'}</Typography.Text>
               </Descriptions.Item>
               <Descriptions.Item label="参数">
-                {selectedWork.params ? `${selectedWork.params.transpose}, ${selectedWork.params.f0_method}` : '-'}
+                {selectedWork.params ? JSON.stringify(selectedWork.params) : '-'}
               </Descriptions.Item>
               <Descriptions.Item label="输入模式">{selectedWork.input_mode}</Descriptions.Item>
               <Descriptions.Item label="状态">

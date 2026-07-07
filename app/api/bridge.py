@@ -96,6 +96,9 @@ class Api:
     def get_work(self, work_id: str) -> dict[str, Any]:
         return self._works.get_work(work_id)
 
+    def start_work(self, work_id: str) -> dict[str, Any]:
+        return self._works.start_work(work_id)
+
     def delete_work(self, work_id: str) -> dict[str, Any]:
         return self._works.delete_work(work_id)
 
@@ -107,10 +110,12 @@ def build_api() -> Api:
     config.ensure_data_dirs()
     settings = SettingsStore(config.SETTINGS_DB)
     stem_preparer = StemPreparer(config.WORKS_DIR)
+    model_repo = ListRepository(config.MODELS_DB)
+    runtime = RuntimeService(settings)
     return Api(
         settings,
-        RuntimeService(settings),
-        ModelService(ListRepository(config.MODELS_DB), config.MODELS_DIR),
+        runtime,
+        ModelService(model_repo, config.MODELS_DIR),
         stem_preparer,
-        WorkService(ListRepository(config.WORKS_DB), stem_preparer),
+        WorkService(ListRepository(config.WORKS_DB), stem_preparer, model_repo, runtime),
     )

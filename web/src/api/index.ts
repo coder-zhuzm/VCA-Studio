@@ -145,6 +145,20 @@ const mock = {
     const work = mockWorks.find((item) => item.id === workId)
     return work ? { ok: true, work } : { ok: false, error: 'Work not found' }
   },
+  async start_work(workId: string): Promise<WorkMutationResult> {
+    const work = mockWorks.find((item) => item.id === workId)
+    if (!work) return { ok: false, error: 'Work not found' }
+    if (work.status !== 'pending' || work.stage !== 'prepared') return { ok: true, work }
+    const now = new Date().toISOString()
+    const log = { level: 'error', message: '浏览器 mock：真实 RVC 推理尚未接入。', created_at: now }
+    Object.assign(work, {
+      status: 'failed',
+      stage: 'failed',
+      logs: [...work.logs, log],
+      updated_at: now,
+    })
+    return { ok: true, work }
+  },
   async delete_work(workId: string): Promise<WorkMutationResult> {
     const index = mockWorks.findIndex((item) => item.id === workId)
     if (index < 0) return { ok: false, error: 'Work not found' }
@@ -197,6 +211,7 @@ export const api = {
   createWork: async (payload: CreateWorkPayload) => (await desktop()).create_work(payload),
   listWorks: async () => (await desktop()).list_works(),
   getWork: async (workId: string) => (await desktop()).get_work(workId),
+  startWork: async (workId: string) => (await desktop()).start_work(workId),
   deleteWork: async (workId: string) => (await desktop()).delete_work(workId),
   readWorkLog: async (workId: string) => (await desktop()).read_work_log(workId),
 }
