@@ -850,12 +850,12 @@ P0/P1 只支持：
 [x] Runtime 深度检测
 [x] RVC 模型导入
 [x] 三种输入模式
-[x] _prepare_stems（当前为输入复制/可选 ffmpeg WAV 规范化）
+[x] _prepare_stems（当前为输入复制；创建时可选 ffmpeg WAV 规范化，长期做自动检测并提示转换）
 [ ] UVR 分离
 [ ] RVC 推理
-[ ] ffmpeg 混音
+[x] ffmpeg 最小混音（stems 模式 AI vocal + instrumental → final.wav）
 [x] 作品库
-[ ] 任务队列
+[x] 串行任务队列（start_work 入队，后台单 worker 执行）
 [x] 日志
 [x] WAV 导出（导出已有 output/final.wav；真实生成待推理/混音接入）
 ```

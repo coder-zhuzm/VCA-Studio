@@ -11,6 +11,7 @@ import webview
 
 try:
     import config
+    from application.inference_runner import InferenceRunner
     from application.model_service import ModelService
     from application.runtime_service import RuntimeService
     from application.stem_preparer import StemPreparer
@@ -21,6 +22,7 @@ except ModuleNotFoundError:
     if str(app_dir) not in sys.path:
         sys.path.insert(0, str(app_dir))
     import config
+    from application.inference_runner import InferenceRunner
     from application.model_service import ModelService
     from application.runtime_service import RuntimeService
     from application.stem_preparer import StemPreparer
@@ -157,5 +159,5 @@ def build_api() -> Api:
         runtime,
         ModelService(model_repo, config.MODELS_DIR),
         stem_preparer,
-        WorkService(ListRepository(config.WORKS_DB), stem_preparer, model_repo, runtime),
+        WorkService(ListRepository(config.WORKS_DB), stem_preparer, model_repo, runtime, InferenceRunner(settings)),
     )

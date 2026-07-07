@@ -134,6 +134,7 @@ export interface CreateWorkPayload {
   song_path?: string
   vocals_path?: string
   instrumental_path?: string
+  normalize_input?: boolean
 }
 
 export interface WorkParams {

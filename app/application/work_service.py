@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import shutil
 import subprocess
 import sys
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import config
+from application.inference_runner import InferenceRunner
 from application.runtime_service import RuntimeService
 from application.stem_preparer import StemPreparer
 from infrastructure.storage import ListRepository
@@ -58,11 +61,18 @@ class WorkService:
         stem_preparer: StemPreparer,
         model_repo: ListRepository | None = None,
         runtime: RuntimeService | None = None,
+        inference_runner: InferenceRunner | None = None,
     ) -> None:
         self._repo = repo
         self._stem_preparer = stem_preparer
         self._model_repo = model_repo
         self._runtime = runtime
+        self._inference_runner = inference_runner
+        self._queue: queue.Queue[str] = queue.Queue()
+        self._queued: set[str] = set()
+        self._queue_lock = threading.Lock()
+        self._worker = threading.Thread(target=self._run_queue, daemon=True)
+        self._worker.start()
 
     def create_work(self, payload: dict[str, Any]) -> dict[str, Any]:
         if payload is None:
@@ -133,7 +143,11 @@ class WorkService:
         if error:
             return {"ok": True, "work": self._fail_work(work, error)}
 
-        return {"ok": True, "work": self._fail_work(work, "真实 RVC 推理尚未接入。")}
+        if not self._inference_runner:
+            return {"ok": True, "work": self._fail_work(work, "RVC runner 未配置。")}
+        started = self._mark_running(work)
+        self._enqueue(str(started["id"]))
+        return {"ok": True, "work": started}
 
     def retry_work(self, work_id: str) -> dict[str, Any]:
         work = self._repo.get(str(work_id))
@@ -166,6 +180,8 @@ class WorkService:
         updated = {**work, "name": cleaned, "updated_at": _now()}
         self._write_metadata(updated)
         self._repo.update_item(str(work_id), updated)
+        with self._queue_lock:
+            self._queued.discard(str(work_id))
         return {"ok": True, "work": updated}
 
     def export_work(self, work_id: str, target_dir: str) -> dict[str, Any]:
@@ -256,8 +272,7 @@ class WorkService:
             return "RVC 主模型文件缺失。"
         if work.get("input_mode") == "song":
             return "完整歌曲输入还未接入 UVR 分离，请先使用已分离人声。"
-        vocals = next((item for item in work.get("input_files") or [] if item.get("role") == "vocals"), None)
-        vocals_path = str((vocals or {}).get("stored_path") or "")
+        vocals_path = self._vocals_path(work)
         if not vocals_path or not Path(vocals_path).is_file():
             return "人声输入文件缺失。"
         if self._runtime:
@@ -265,6 +280,113 @@ class WorkService:
             if rvc.get("status") != "ready":
                 return f"RVC runtime 未就绪：{rvc.get('message') or '未配置'}"
         return ""
+
+    def _run_work(self, work_id: str) -> None:
+        work = self._repo.get(work_id)
+        if not work or not self._inference_runner:
+            return
+        model = self._model_repo.get(str(work.get("model_id") or "")) if self._model_repo else None
+        result = self._inference_runner.run_rvc(work, model, self._vocals_path(work))
+        if not result.get("ok"):
+            self._fail_work(work, str(result.get("error") or "RVC 推理失败。"))
+            return
+        self._finish_work(work, str(result.get("path") or ""))
+
+    def _enqueue(self, work_id: str) -> None:
+        with self._queue_lock:
+            if work_id in self._queued:
+                return
+            self._queued.add(work_id)
+            self._queue.put(work_id)
+
+    def _run_queue(self) -> None:
+        while True:
+            work_id = self._queue.get()
+            try:
+                self._run_work(work_id)
+            finally:
+                with self._queue_lock:
+                    self._queued.discard(work_id)
+                self._queue.task_done()
+
+    def _vocals_path(self, work: dict[str, Any]) -> str:
+        vocals = next((item for item in work.get("input_files") or [] if item.get("role") == "vocals"), None)
+        return str((vocals or {}).get("stored_path") or "")
+
+    def _mark_running(self, work: dict[str, Any]) -> dict[str, Any]:
+        entry = {"level": "info", "message": "RVC inference started", "created_at": _now()}
+        updated = {
+            **work,
+            "status": "running",
+            "stage": "inferencing",
+            "progress": 50,
+            "steps": [
+                *(step for step in (work.get("steps") or []) if step.get("key") != "run"),
+                self._step("run", "running", entry["created_at"], entry["message"]),
+            ],
+            "logs": [*(work.get("logs") or []), entry],
+            "updated_at": entry["created_at"],
+        }
+        self._append_log(updated, entry)
+        self._write_metadata(updated)
+        self._repo.update_item(str(updated["id"]), updated)
+        return updated
+
+    def _finish_work(self, work: dict[str, Any], ai_vocal_path: str) -> dict[str, Any]:
+        work_dir = self._work_dir_from_record(work)
+        if not work_dir:
+            return self._fail_work(work, "Work directory not found")
+        source = Path(ai_vocal_path)
+        target = work_dir / "output" / "final.wav"
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            instrumental = self._instrumental_path(work)
+            if instrumental:
+                self._mix_final(source, Path(instrumental), target)
+            else:
+                shutil.copy2(source, target)
+            if not target.is_file():
+                raise OSError("输出文件未生成。")
+        except (OSError, subprocess.SubprocessError) as exc:
+            return self._fail_work(work, str(exc))
+        entry = {"level": "info", "message": "RVC inference finished", "created_at": _now()}
+        updated = {
+            **work,
+            "status": "done",
+            "stage": "exported",
+            "progress": 100,
+            "output_files": {"ai_vocal": str(source), "final": str(target)},
+            "steps": [
+                *(step for step in (work.get("steps") or []) if step.get("key") != "run"),
+                self._step("run", "done", entry["created_at"], entry["message"]),
+            ],
+            "logs": [*(work.get("logs") or []), entry],
+            "updated_at": entry["created_at"],
+        }
+        self._append_log(updated, entry)
+        self._write_metadata(updated)
+        self._repo.update_item(str(updated["id"]), updated)
+        return updated
+
+    def _instrumental_path(self, work: dict[str, Any]) -> str:
+        instrumental = next((item for item in work.get("input_files") or [] if item.get("role") == "instrumental"), None)
+        path = str((instrumental or {}).get("stored_path") or "")
+        return path if path and Path(path).is_file() else ""
+
+    def _mix_final(self, vocal: Path, instrumental: Path, target: Path) -> None:
+        ffmpeg = getattr(self._stem_preparer, "_ffmpeg_path", "")
+        if not ffmpeg:
+            raise OSError("混音需要先配置 ffmpeg。")
+        subprocess.run(
+            [ffmpeg, "-y", "-i", str(instrumental), "-i", str(vocal), "-filter_complex", "amix=inputs=2:duration=longest", str(target)],
+            capture_output=True,
+            check=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+            **config.subprocess_no_window(),
+        )
 
     def _fail_work(self, work: dict[str, Any], message: str) -> dict[str, Any]:
         entry = {"level": "error", "message": message, "created_at": _now()}
@@ -295,7 +417,7 @@ class WorkService:
         return {"key": key, "status": status, "updated_at": created_at, "message": message}
 
     def _fail_steps(self, steps: list[dict[str, Any]], entry: dict[str, str]) -> list[dict[str, Any]]:
-        return [*steps, self._step("run", "failed", entry["created_at"], entry["message"])]
+        return [*(step for step in steps if step.get("key") != "run"), self._step("run", "failed", entry["created_at"], entry["message"])]
 
     def _reset_steps(self, steps: list[dict[str, Any]], entry: dict[str, str]) -> list[dict[str, Any]]:
         return [step for step in steps if step.get("status") != "failed"] + [self._step("retry", "done", entry["created_at"], entry["message"])]

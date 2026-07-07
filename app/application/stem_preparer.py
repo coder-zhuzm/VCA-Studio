@@ -43,18 +43,18 @@ class StemPreparer:
         input_dir = work_dir / "input"
         try:
             input_dir.mkdir(parents=True, exist_ok=False)
-            files = self._copy_sources(sources, input_dir)
+            files = self._copy_sources(sources, input_dir, bool(payload.get("normalize_input")))
         except (OSError, subprocess.SubprocessError) as exc:
             shutil.rmtree(work_dir, ignore_errors=True)
             return {"ok": False, "error": str(exc)}
 
         return {"ok": True, "work_id": work_id, "mode": mode, "files": files}
 
-    def _copy_sources(self, sources: list[tuple[Path, str]], input_dir: Path) -> dict[str, str]:
+    def _copy_sources(self, sources: list[tuple[Path, str]], input_dir: Path, normalize: bool) -> dict[str, str]:
         files: dict[str, str] = {}
         for source, role in sources:
             target = input_dir / f"{role}.wav"
-            if self._ffmpeg_path:
+            if normalize and self._ffmpeg_path:
                 subprocess.run(
                     [self._ffmpeg_path, "-y", "-i", str(source), "-ar", "44100", "-ac", "2", str(target)],
                     capture_output=True,
