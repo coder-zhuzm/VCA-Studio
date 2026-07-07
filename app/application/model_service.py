@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import os
 import shutil
+import subprocess
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import config
 from infrastructure.storage import ListRepository
 
 FRAMEWORKS = {"rvc", "so-vits-svc"}
@@ -98,6 +102,24 @@ class ModelService:
         items = [{**model, "is_default": model.get("id") == model_id, "updated_at": _now()} for model in self._repo.all()]
         self._repo.replace_all(items)
         return {"ok": True, "models": self.list_models()}
+
+    def open_model_dir(self, model_id: str) -> dict[str, Any]:
+        model = self._repo.get(str(model_id))
+        if not model:
+            return {"ok": False, "error": "模型不存在。"}
+        model_dir = self._model_dir(model)
+        if not model_dir or not model_dir.is_dir():
+            return {"ok": False, "error": "模型目录不存在。"}
+        try:
+            if sys.platform == "darwin":
+                subprocess.Popen(["open", str(model_dir)], **config.subprocess_no_window())
+            elif os.name == "nt":
+                os.startfile(model_dir)  # type: ignore[attr-defined]
+            else:
+                subprocess.Popen(["xdg-open", str(model_dir)], **config.subprocess_no_window())
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True, "path": str(model_dir)}
 
     def _validate_payload(self, framework: str, payload: dict[str, Any]) -> str:
         for key in REQUIRED[framework]:

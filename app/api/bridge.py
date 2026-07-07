@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
 import sys
 from typing import Any
+
+import webview
 
 try:
     import config
@@ -60,8 +63,26 @@ class Api:
         self._settings.set(str(key), value)
         return {"ok": True, "settings": self._settings.all()}
 
+    def choose_file(self) -> dict[str, Any]:
+        if not self._window:
+            return {"ok": False, "error": "Window not ready"}
+        paths = self._window.create_file_dialog(webview.OPEN_DIALOG, allow_multiple=False)
+        return {"ok": True, "path": str(paths[0]) if paths else ""}
+
+    def choose_directory(self) -> dict[str, Any]:
+        if not self._window:
+            return {"ok": False, "error": "Window not ready"}
+        paths = self._window.create_file_dialog(webview.FOLDER_DIALOG, allow_multiple=False)
+        return {"ok": True, "path": str(paths[0]) if paths else ""}
+
+    def open_data_dir(self) -> dict[str, Any]:
+        return self._works.open_path(config.DATA_DIR)
+
     def get_runtime_status(self) -> dict[str, Any]:
         return self._runtime.status()
+
+    def check_runtime_component(self, key: str) -> dict[str, Any]:
+        return {"ok": True, "component": self._runtime.check_component(key), **self._runtime.status()}
 
     def set_runtime_path(self, key: str, path: str) -> dict[str, Any]:
         return self._runtime.set_path(key, path)
@@ -84,6 +105,9 @@ class Api:
     def set_default_model(self, model_id: str) -> dict[str, Any]:
         return self._models.set_default_model(model_id)
 
+    def open_model_dir(self, model_id: str) -> dict[str, Any]:
+        return self._models.open_model_dir(model_id)
+
     def prepare_stems(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._stem_preparer.prepare(payload or {})
 
@@ -99,17 +123,33 @@ class Api:
     def start_work(self, work_id: str) -> dict[str, Any]:
         return self._works.start_work(work_id)
 
+    def retry_work(self, work_id: str) -> dict[str, Any]:
+        return self._works.retry_work(work_id)
+
+    def rename_work(self, work_id: str, name: str) -> dict[str, Any]:
+        return self._works.rename_work(work_id, name)
+
+    def export_work(self, work_id: str, target_dir: str) -> dict[str, Any]:
+        return self._works.export_work(work_id, target_dir)
+
     def delete_work(self, work_id: str) -> dict[str, Any]:
         return self._works.delete_work(work_id)
 
     def read_work_log(self, work_id: str) -> dict[str, Any]:
         return self._works.read_work_log(work_id)
 
+    def open_work_dir(self, work_id: str) -> dict[str, Any]:
+        return self._works.open_work_dir(work_id)
+
+    def open_work_log(self, work_id: str) -> dict[str, Any]:
+        return self._works.open_work_log(work_id)
+
 
 def build_api() -> Api:
     config.ensure_data_dirs()
     settings = SettingsStore(config.SETTINGS_DB)
-    stem_preparer = StemPreparer(config.WORKS_DIR)
+    ffmpeg_path = str(settings.get("ffmpeg_path", "") or "") or shutil.which("ffmpeg") or ""
+    stem_preparer = StemPreparer(config.WORKS_DIR, ffmpeg_path)
     model_repo = ListRepository(config.MODELS_DB)
     runtime = RuntimeService(settings)
     return Api(

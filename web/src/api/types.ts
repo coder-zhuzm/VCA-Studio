@@ -34,6 +34,12 @@ export interface RuntimeStatus {
   paths: Record<string, string>
 }
 
+export interface RuntimeComponentResult extends RuntimeStatus {
+  ok: boolean
+  error?: string
+  component?: RuntimeComponentStatus
+}
+
 export interface SetRuntimePathResult extends RuntimeStatus {
   ok: boolean
   error?: string
@@ -95,6 +101,13 @@ export interface WorkLog {
   created_at: string
 }
 
+export interface WorkStep {
+  key: string
+  status: string
+  updated_at: string
+  message: string
+}
+
 export interface WorkRecord {
   id: string
   name: string
@@ -104,6 +117,8 @@ export interface WorkRecord {
   input_files: WorkInputFile[]
   status: WorkStatus
   stage: WorkStage
+  progress?: number
+  steps?: WorkStep[]
   logs: WorkLog[]
   work_dir?: string
   log_path?: string
@@ -146,11 +161,21 @@ export interface WorkLogContentResult {
   content?: string
 }
 
+export interface OpenPathResult {
+  ok: boolean
+  error?: string
+  path?: string
+}
+
 export interface DesktopApi {
   get_app_status: () => Promise<AppStatus>
   get_settings: () => Promise<Record<string, unknown>>
   set_setting: (key: string, value: unknown) => Promise<SetSettingResult>
+  choose_file: () => Promise<OpenPathResult>
+  choose_directory: () => Promise<OpenPathResult>
+  open_data_dir: () => Promise<OpenPathResult>
   get_runtime_status: () => Promise<RuntimeStatus>
+  check_runtime_component: (key: string) => Promise<RuntimeComponentResult>
   set_runtime_path: (key: string, path: string) => Promise<SetRuntimePathResult>
   set_runtime_paths: (paths: Record<string, string>) => Promise<SetRuntimePathResult>
   list_models: () => Promise<ModelRecord[]>
@@ -158,12 +183,18 @@ export interface DesktopApi {
   delete_model: (id: string) => Promise<ModelMutationResult>
   check_model: (id: string) => Promise<ModelMutationResult>
   set_default_model: (id: string) => Promise<ModelMutationResult>
+  open_model_dir: (id: string) => Promise<OpenPathResult>
   create_work: (payload: CreateWorkPayload) => Promise<WorkMutationResult>
   list_works: () => Promise<WorkMutationResult>
   get_work: (workId: string) => Promise<WorkMutationResult>
   start_work: (workId: string) => Promise<WorkMutationResult>
+  retry_work: (workId: string) => Promise<WorkMutationResult>
+  rename_work: (workId: string, name: string) => Promise<WorkMutationResult>
+  export_work: (workId: string, targetDir: string) => Promise<OpenPathResult>
   delete_work: (workId: string) => Promise<WorkMutationResult>
   read_work_log: (workId: string) => Promise<WorkLogContentResult>
+  open_work_dir: (workId: string) => Promise<OpenPathResult>
+  open_work_log: (workId: string) => Promise<OpenPathResult>
 }
 
 declare global {

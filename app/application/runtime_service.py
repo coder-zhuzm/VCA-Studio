@@ -60,13 +60,23 @@ class RuntimeService:
             return self._component("svc", [
                 self._file_check("svc_python", "SVC Python"),
                 self._sovits_repo_check(),
+                self._python_import_check("svc_python", "torch", "torch"),
+                self._python_import_check("svc_python", "librosa", "librosa"),
+                self._python_import_check("svc_python", "fairseq", "fairseq"),
             ])
         if key == "rvc":
-            return self._component("rvc", [self._file_check("rvc_python", "RVC Python")])
+            return self._component("rvc", [
+                self._file_check("rvc_python", "RVC Python"),
+                self._python_import_check("rvc_python", "torch", "torch"),
+                self._python_import_check("rvc_python", "rvc_python", "rvc_python"),
+            ])
         if key == "uvr":
             return self._component("uvr", [
                 self._file_check("uvr_python", "UVR Python"),
+                self._python_import_check("uvr_python", "audio_separator", "audio_separator"),
                 self._dir_check("uvr_model_dir", "UVR 模型目录"),
+                self._uvr_model_check("5_HP-Karaoke-UVR.pth"),
+                self._uvr_model_check("UVR-DeEcho-DeReverb.pth"),
             ])
         return {
             "key": key,
@@ -130,6 +140,31 @@ class RuntimeService:
         target = Path(value).expanduser() / "inference" / "infer_tool.py" if value else Path()
         ok = bool(value and target.is_file())
         return {"key": "sovits_repo", "label": "So-VITS-SVC 仓库", "ok": ok, "message": value if ok else "未找到 inference/infer_tool.py"}
+
+    def _python_import_check(self, setting_key: str, module: str, label: str) -> dict[str, Any]:
+        value = str(self._settings.get(setting_key, "") or "").strip()
+        if not value or not Path(value).expanduser().is_file():
+            return {"key": f"{setting_key}_{module}", "label": f"{label} import", "ok": False, "message": "Python 未配置"}
+        try:
+            result = subprocess.run(
+                [str(Path(value).expanduser()), "-c", f"import {module}"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=12,
+                **config.subprocess_no_window(),
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return {"key": f"{setting_key}_{module}", "label": f"{label} import", "ok": False, "status": "error", "message": str(exc)}
+        message = "可导入" if result.returncode == 0 else (result.stderr or result.stdout or f"退出码 {result.returncode}").strip()
+        return {"key": f"{setting_key}_{module}", "label": f"{label} import", "ok": result.returncode == 0, "message": message}
+
+    def _uvr_model_check(self, filename: str) -> dict[str, Any]:
+        root = str(self._settings.get("uvr_model_dir", "") or "").strip()
+        path = Path(root).expanduser() / filename if root else Path(filename)
+        ok = bool(root and path.is_file())
+        return {"key": filename, "label": filename, "ok": ok, "message": str(path) if ok else "模型文件缺失"}
 
     def _component(self, key: str, checks: list[dict[str, Any]]) -> dict[str, Any]:
         ok_count = sum(1 for check in checks if check.get("ok"))

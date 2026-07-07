@@ -1,7 +1,7 @@
-import { Button, Card, Descriptions, Drawer, Popconfirm, Space, Table, Tag, Typography, message } from 'antd'
+import { Button, Card, Descriptions, Drawer, Popconfirm, Progress, Space, Table, Tag, Typography, message } from 'antd'
 import { useEffect, useState } from 'react'
 import { api } from '../api'
-import type { WorkInputFile, WorkLog, WorkRecord, WorkStage, WorkStatus } from '../api/types'
+import type { WorkInputFile, WorkLog, WorkRecord, WorkStage, WorkStatus, WorkStep } from '../api/types'
 
 const STATUS_COLOR: Record<WorkStatus, string> = {
   pending: 'blue',
@@ -25,6 +25,7 @@ export function Works() {
   const [loading, setLoading] = useState(false)
   const [detailLoadingId, setDetailLoadingId] = useState<string>()
   const [startingId, setStartingId] = useState<string>()
+  const [retryingId, setRetryingId] = useState<string>()
   const [deletingId, setDeletingId] = useState<string>()
   const [logContent, setLogContent] = useState('')
   const [logLoading, setLogLoading] = useState(false)
@@ -88,6 +89,31 @@ export function Works() {
     }
   }
 
+  async function renameWork(workId: string, name: string) {
+    const result = await api.renameWork(workId, name)
+    if (!result.ok || !result.work) {
+      message.error(result.error ?? '重命名失败')
+      return
+    }
+    setWorks((items) => items.map((item) => (item.id === workId ? result.work! : item)))
+    if (selectedWork?.id === workId) setSelectedWork(result.work)
+    message.success('已重命名')
+  }
+
+  async function exportWork(workId: string) {
+    const picked = await api.chooseDirectory()
+    if (!picked.ok || !picked.path) {
+      if (!picked.ok) message.error(picked.error ?? '选择失败')
+      return
+    }
+    const result = await api.exportWork(workId, picked.path)
+    if (!result.ok) {
+      message.error(result.error ?? '导出失败')
+      return
+    }
+    message.success(`已导出：${result.path}`)
+  }
+
   async function startWork(workId: string) {
     setStartingId(workId)
     try {
@@ -111,6 +137,30 @@ export function Works() {
     }
   }
 
+  async function retryWork(workId: string) {
+    setRetryingId(workId)
+    try {
+      const result = await api.retryWork(workId)
+      if (!result.ok || !result.work) {
+        message.error(result.error ?? '重试失败')
+        return
+      }
+      setWorks((items) => items.map((item) => (item.id === workId ? result.work! : item)))
+      if (selectedWork?.id === workId) {
+        setSelectedWork(result.work)
+        await loadLog(workId)
+      }
+      message.success('已重置为待运行')
+    } finally {
+      setRetryingId(undefined)
+    }
+  }
+
+  async function openPath(action: () => Promise<{ ok: boolean; error?: string }>) {
+    const result = await action()
+    if (!result.ok) message.error(result.error ?? '打开失败')
+  }
+
   useEffect(() => {
     void refresh()
   }, [])
@@ -129,7 +179,7 @@ export function Works() {
               dataIndex: 'name',
               render: (value: string, row) => (
                 <Space direction="vertical" size={2}>
-                  <Typography.Text>{value}</Typography.Text>
+                  <Typography.Text editable={{ onChange: (next) => renameWork(row.id, next) }}>{value}</Typography.Text>
                   <Typography.Text type="secondary">{row.id}</Typography.Text>
                 </Space>
               ),
@@ -144,6 +194,11 @@ export function Works() {
               dataIndex: 'stage',
               render: (value: WorkStage) => <Tag color={STAGE_COLOR[value]}>{value}</Tag>,
             },
+            {
+              title: '进度',
+              dataIndex: 'progress',
+              render: (value: number | undefined) => <Progress percent={value ?? 0} size="small" />,
+            },
             { title: '创建时间', dataIndex: 'created_at' },
             {
               title: '操作',
@@ -157,8 +212,19 @@ export function Works() {
                   >
                     开始
                   </Button>
+                  <Button
+                    size="small"
+                    onClick={() => retryWork(row.id)}
+                    loading={retryingId === row.id}
+                    disabled={row.status !== 'failed'}
+                  >
+                    重试
+                  </Button>
                   <Button size="small" onClick={() => openDetails(row.id)} loading={detailLoadingId === row.id}>
                     查看
+                  </Button>
+                  <Button size="small" onClick={() => exportWork(row.id)}>
+                    导出
                   </Button>
                   <Popconfirm title="删除这个作品？" onConfirm={() => deleteWork(row.id)}>
                     <Button size="small" danger loading={deletingId === row.id}>删除</Button>
@@ -199,12 +265,21 @@ export function Works() {
               <Descriptions.Item label="阶段">
                 <Tag color={STAGE_COLOR[selectedWork.stage]}>{selectedWork.stage}</Tag>
               </Descriptions.Item>
+              <Descriptions.Item label="进度">
+                <Progress percent={selectedWork.progress ?? 0} size="small" />
+              </Descriptions.Item>
               <Descriptions.Item label="创建时间">{selectedWork.created_at}</Descriptions.Item>
               <Descriptions.Item label="工作目录">
-                <Typography.Text copyable>{selectedWork.work_dir || '-'}</Typography.Text>
+                <Space>
+                  <Typography.Text copyable>{selectedWork.work_dir || '-'}</Typography.Text>
+                  <Button size="small" onClick={() => openPath(() => api.openWorkDir(selectedWork.id))}>打开</Button>
+                </Space>
               </Descriptions.Item>
               <Descriptions.Item label="日志文件">
-                <Typography.Text copyable>{selectedWork.log_path || '-'}</Typography.Text>
+                <Space>
+                  <Typography.Text copyable>{selectedWork.log_path || '-'}</Typography.Text>
+                  <Button size="small" onClick={() => openPath(() => api.openWorkLog(selectedWork.id))}>打开</Button>
+                </Space>
               </Descriptions.Item>
             </Descriptions>
 
@@ -222,6 +297,21 @@ export function Works() {
                     dataIndex: 'stored_path',
                     render: (value: string) => <Typography.Text copyable>{value}</Typography.Text>,
                   },
+                ]}
+              />
+            </Card>
+
+            <Card title="步骤" size="small">
+              <Table<WorkStep>
+                rowKey="key"
+                size="small"
+                dataSource={selectedWork.steps ?? []}
+                pagination={false}
+                columns={[
+                  { title: '步骤', dataIndex: 'key' },
+                  { title: '状态', dataIndex: 'status', render: (value: string) => <Tag>{value}</Tag> },
+                  { title: '更新时间', dataIndex: 'updated_at' },
+                  { title: '说明', dataIndex: 'message' },
                 ]}
               />
             </Card>

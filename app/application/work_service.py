@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import json
+import os
 import shutil
+import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import config
 from application.runtime_service import RuntimeService
 from application.stem_preparer import StemPreparer
 from infrastructure.storage import ListRepository
@@ -90,6 +95,8 @@ class WorkService:
             "input_files": input_files,
             "status": "pending",
             "stage": "prepared",
+            "progress": 10,
+            "steps": [self._step("prepare", "done", created_at, "Input prepared")],
             "logs": [log_entry],
             "work_dir": str(work_dir) if work_dir else "",
             "log_path": str(work_dir / "run.log") if work_dir else "",
@@ -99,6 +106,7 @@ class WorkService:
 
         try:
             self._append_log(record, log_entry)
+            self._write_metadata(record)
             self._repo.add(record)
         except OSError as exc:
             self._cleanup_work_dir(record)
@@ -127,6 +135,56 @@ class WorkService:
 
         return {"ok": True, "work": self._fail_work(work, "真实 RVC 推理尚未接入。")}
 
+    def retry_work(self, work_id: str) -> dict[str, Any]:
+        work = self._repo.get(str(work_id))
+        if not work:
+            return {"ok": False, "error": "Work not found"}
+        if work.get("status") != "failed":
+            return {"ok": True, "work": work}
+        entry = {"level": "info", "message": "Work reset for retry", "created_at": _now()}
+        updated = {
+            **work,
+            "status": "pending",
+            "stage": "prepared",
+            "progress": 10,
+            "steps": self._reset_steps(work.get("steps") or [], entry),
+            "logs": [*(work.get("logs") or []), entry],
+            "updated_at": entry["created_at"],
+        }
+        self._append_log(updated, entry)
+        self._write_metadata(updated)
+        self._repo.update_item(str(updated["id"]), updated)
+        return {"ok": True, "work": updated}
+
+    def rename_work(self, work_id: str, name: str) -> dict[str, Any]:
+        work = self._repo.get(str(work_id))
+        if not work:
+            return {"ok": False, "error": "Work not found"}
+        cleaned = str(name or "").strip()
+        if not cleaned:
+            return {"ok": False, "error": "作品名称不能为空。"}
+        updated = {**work, "name": cleaned, "updated_at": _now()}
+        self._write_metadata(updated)
+        self._repo.update_item(str(work_id), updated)
+        return {"ok": True, "work": updated}
+
+    def export_work(self, work_id: str, target_dir: str) -> dict[str, Any]:
+        work = self._repo.get(str(work_id))
+        if not work:
+            return {"ok": False, "error": "Work not found"}
+        source = self._output_path(work)
+        if not source:
+            return {"ok": False, "error": "作品还没有可导出的输出文件。"}
+        target_root = Path(str(target_dir or "")).expanduser()
+        if not target_root.is_dir():
+            return {"ok": False, "error": "导出目录不存在。"}
+        target = target_root / source.name
+        try:
+            shutil.copy2(source, target)
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True, "path": str(target)}
+
     def delete_work(self, work_id: str) -> dict[str, Any]:
         work = self._repo.get(str(work_id))
         if not work:
@@ -150,6 +208,24 @@ class WorkService:
         except OSError as exc:
             return {"ok": False, "error": str(exc)}
         return {"ok": True, "work_id": str(work_id), "log_path": log_path, "content": content}
+
+    def open_work_dir(self, work_id: str) -> dict[str, Any]:
+        work = self._repo.get(str(work_id))
+        if not work:
+            return {"ok": False, "error": "Work not found"}
+        work_dir = self._work_dir_from_record(work)
+        if not work_dir or not work_dir.is_dir():
+            return {"ok": False, "error": "Work directory not found"}
+        return self.open_path(work_dir)
+
+    def open_work_log(self, work_id: str) -> dict[str, Any]:
+        work = self._repo.get(str(work_id))
+        if not work:
+            return {"ok": False, "error": "Work not found"}
+        path = Path(str(work.get("log_path") or ""))
+        if not path.is_file():
+            return {"ok": False, "error": "Work log not found"}
+        return self.open_path(path)
 
     def _input_files(self, files: dict[str, str], payload: dict[str, Any]) -> list[dict[str, str]]:
         sources = {
@@ -196,10 +272,13 @@ class WorkService:
             **work,
             "status": "failed",
             "stage": "failed",
+            "progress": int(work.get("progress") or 0),
+            "steps": self._fail_steps(work.get("steps") or [], entry),
             "logs": [*(work.get("logs") or []), entry],
             "updated_at": entry["created_at"],
         }
         self._append_log(updated, entry)
+        self._write_metadata(updated)
         self._repo.update_item(str(updated["id"]), updated)
         return updated
 
@@ -211,6 +290,34 @@ class WorkService:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as file:
             file.write(f"{log_entry['created_at']} [{log_entry['level']}] {log_entry['message']}\n")
+
+    def _step(self, key: str, status: str, created_at: str, message: str) -> dict[str, Any]:
+        return {"key": key, "status": status, "updated_at": created_at, "message": message}
+
+    def _fail_steps(self, steps: list[dict[str, Any]], entry: dict[str, str]) -> list[dict[str, Any]]:
+        return [*steps, self._step("run", "failed", entry["created_at"], entry["message"])]
+
+    def _reset_steps(self, steps: list[dict[str, Any]], entry: dict[str, str]) -> list[dict[str, Any]]:
+        return [step for step in steps if step.get("status") != "failed"] + [self._step("retry", "done", entry["created_at"], entry["message"])]
+
+    def _write_metadata(self, record: dict[str, Any]) -> None:
+        work_dir = self._work_dir_from_record(record)
+        if not work_dir:
+            return
+        work_dir.mkdir(parents=True, exist_ok=True)
+        (work_dir / "work.json").write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def open_path(self, path: Path) -> dict[str, Any]:
+        try:
+            if sys.platform == "darwin":
+                subprocess.Popen(["open", str(path)], **config.subprocess_no_window())
+            elif os.name == "nt":
+                os.startfile(path)  # type: ignore[attr-defined]
+            else:
+                subprocess.Popen(["xdg-open", str(path)], **config.subprocess_no_window())
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True, "path": str(path)}
 
     def _cleanup_work_dir(self, record: dict[str, Any]) -> None:
         work_dir = self._work_dir_from_record(record)
@@ -228,6 +335,16 @@ class WorkService:
         if not first:
             return None
         return Path(str(first)).parent.parent
+
+    def _output_path(self, work: dict[str, Any]) -> Path | None:
+        work_dir = self._work_dir_from_record(work)
+        if not work_dir:
+            return None
+        for relative in ("output/final.wav", "inference/ai_vocal.wav"):
+            path = work_dir / relative
+            if path.is_file():
+                return path
+        return None
 
     def _is_safe_work_dir(self, work_dir: Path) -> bool:
         root = getattr(self._stem_preparer, "_works_dir", None)

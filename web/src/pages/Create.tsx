@@ -3,12 +3,19 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import type { CreateWorkPayload, ModelRecord, WorkInputMode, WorkRecord } from '../api/types'
 
+const MODE_LABEL: Record<WorkInputMode, string> = {
+  song: '完整歌曲，自动分离',
+  vocals: '已分离人声',
+  stems: '已分离人声 + 伴奏',
+}
+
 export function Create() {
   const [form] = Form.useForm<CreateWorkPayload>()
   const [models, setModels] = useState<ModelRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [createdWork, setCreatedWork] = useState<WorkRecord>()
   const mode = Form.useWatch('mode', form) ?? 'song'
+  const submitText = mode === 'vocals' ? '开始生成干声' : '开始生成翻唱'
 
   async function createWork(values: CreateWorkPayload) {
     const payload: CreateWorkPayload = {
@@ -32,6 +39,15 @@ export function Create() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function chooseFile(field: keyof CreateWorkPayload) {
+    const result = await api.chooseFile()
+    if (!result.ok) {
+      message.error(result.error ?? '选择失败')
+      return
+    }
+    if (result.path) form.setFieldValue(field, result.path)
   }
 
   useEffect(() => {
@@ -74,13 +90,9 @@ export function Create() {
               }))}
             />
           </Form.Item>
-          <Form.Item name="mode" label="输入模式" rules={[{ required: true }]}>
+          <Form.Item name="mode" label="输入类型" rules={[{ required: true }]}>
             <Select<WorkInputMode>
-              options={[
-                { value: 'song', label: 'Song' },
-                { value: 'vocals', label: 'Vocals' },
-                { value: 'stems', label: 'Stems' },
-              ]}
+              options={(Object.entries(MODE_LABEL) as [WorkInputMode, string][]).map(([value, label]) => ({ value, label }))}
             />
           </Form.Item>
           <Form.Item name={['params', 'transpose']} label="变调" rules={[{ required: true, message: '请输入变调值' }]}>
@@ -120,23 +132,23 @@ export function Create() {
 
           {mode === 'song' ? (
             <Form.Item name="song_path" label="歌曲文件路径" rules={[{ required: true, message: '请输入歌曲文件路径' }]}>
-              <Input placeholder="/path/to/song.wav" allowClear />
+              <Input placeholder="/path/to/song.wav" allowClear addonAfter={<Button type="link" size="small" onClick={() => chooseFile('song_path')}>选择</Button>} />
             </Form.Item>
           ) : null}
 
           {mode === 'vocals' || mode === 'stems' ? (
             <Form.Item name="vocals_path" label="人声文件路径" rules={[{ required: true, message: '请输入人声文件路径' }]}>
-              <Input placeholder="/path/to/vocals.wav" allowClear />
+              <Input placeholder="/path/to/vocals.wav" allowClear addonAfter={<Button type="link" size="small" onClick={() => chooseFile('vocals_path')}>选择</Button>} />
             </Form.Item>
           ) : null}
 
           {mode === 'stems' ? (
             <Form.Item name="instrumental_path" label="伴奏文件路径" rules={[{ required: true, message: '请输入伴奏文件路径' }]}>
-              <Input placeholder="/path/to/instrumental.wav" allowClear />
+              <Input placeholder="/path/to/instrumental.wav" allowClear addonAfter={<Button type="link" size="small" onClick={() => chooseFile('instrumental_path')}>选择</Button>} />
             </Form.Item>
           ) : null}
 
-          <Button type="primary" htmlType="submit" loading={loading}>创建</Button>
+          <Button type="primary" htmlType="submit" loading={loading}>{submitText}</Button>
         </Form>
       </Card>
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 import uuid
 from pathlib import Path
 from typing import Any
@@ -15,8 +16,9 @@ _MODE_REQUIREMENTS = {
 
 
 class StemPreparer:
-    def __init__(self, works_dir: Path) -> None:
+    def __init__(self, works_dir: Path, ffmpeg_path: str = "") -> None:
         self._works_dir = works_dir
+        self._ffmpeg_path = ffmpeg_path
         self._works_dir.mkdir(parents=True, exist_ok=True)
 
     def prepare(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -42,7 +44,7 @@ class StemPreparer:
         try:
             input_dir.mkdir(parents=True, exist_ok=False)
             files = self._copy_sources(sources, input_dir)
-        except OSError as exc:
+        except (OSError, subprocess.SubprocessError) as exc:
             shutil.rmtree(work_dir, ignore_errors=True)
             return {"ok": False, "error": str(exc)}
 
@@ -51,7 +53,19 @@ class StemPreparer:
     def _copy_sources(self, sources: list[tuple[Path, str]], input_dir: Path) -> dict[str, str]:
         files: dict[str, str] = {}
         for source, role in sources:
-            target = input_dir / f"{role}{source.suffix.lower()}"
-            shutil.copy2(source, target)
+            target = input_dir / f"{role}.wav"
+            if self._ffmpeg_path:
+                subprocess.run(
+                    [self._ffmpeg_path, "-y", "-i", str(source), "-ar", "44100", "-ac", "2", str(target)],
+                    capture_output=True,
+                    check=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=120,
+                )
+            else:
+                target = input_dir / f"{role}{source.suffix.lower()}"
+                shutil.copy2(source, target)
             files[role] = str(target)
         return files

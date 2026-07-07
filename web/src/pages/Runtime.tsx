@@ -24,6 +24,7 @@ export function Runtime() {
   const [form] = Form.useForm<Record<string, string>>()
   const [status, setStatus] = useState<RuntimeStatus | null>(null)
   const [loading, setLoading] = useState(false)
+  const [checkingKey, setCheckingKey] = useState<string>()
 
   async function refresh() {
     setLoading(true)
@@ -55,6 +56,30 @@ export function Runtime() {
     }
   }
 
+  async function choosePath(key: string) {
+    const result = key.endsWith('_dir') || key.endsWith('_repo') ? await api.chooseDirectory() : await api.chooseFile()
+    if (!result.ok) {
+      message.error(result.error ?? '选择失败')
+      return
+    }
+    if (result.path) form.setFieldValue(key, result.path)
+  }
+
+  async function checkOne(key: string) {
+    setCheckingKey(key)
+    try {
+      const result = await api.checkRuntimeComponent(key)
+      if (!result.ok) {
+        message.error(result.error ?? '检测失败')
+        return
+      }
+      setStatus(result)
+      form.setFieldsValue(result.paths)
+    } finally {
+      setCheckingKey(undefined)
+    }
+  }
+
   useEffect(() => {
     void refresh()
   }, [])
@@ -76,7 +101,7 @@ export function Runtime() {
         <Form form={form} layout="vertical">
           {PATH_FIELDS.map(([key, label]) => (
             <Form.Item key={key} name={key} label={label}>
-              <Input placeholder="留空则使用 PATH 或显示未配置" allowClear />
+              <Input placeholder="留空则使用 PATH 或显示未配置" allowClear addonAfter={<Button type="link" size="small" onClick={() => choosePath(key)}>选择</Button>} />
             </Form.Item>
           ))}
         </Form>
@@ -107,6 +132,10 @@ export function Runtime() {
                   ))}
                 </Space>
               ),
+            },
+            {
+              title: '操作',
+              render: (_, row) => <Button size="small" loading={checkingKey === row.key} onClick={() => checkOne(row.key)}>重测</Button>,
             },
           ]}
         />

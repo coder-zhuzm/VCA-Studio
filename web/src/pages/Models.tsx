@@ -59,6 +59,11 @@ export function Models() {
     setModels(result.models ?? [])
   }
 
+  async function openModelDir(id: string) {
+    const result = await api.openModelDir(id)
+    if (!result.ok) message.error(result.error ?? '打开失败')
+  }
+
   async function deleteModel(id: string) {
     const result = await api.deleteModel(id)
     if (!result.ok) {
@@ -66,6 +71,15 @@ export function Models() {
       return
     }
     setModels(result.models ?? [])
+  }
+
+  async function chooseFile(field: keyof ImportModelPayload) {
+    const result = await api.chooseFile()
+    if (!result.ok) {
+      message.error(result.error ?? '选择失败')
+      return
+    }
+    if (result.path) form.setFieldValue(field, result.path)
   }
 
   useEffect(() => {
@@ -92,22 +106,22 @@ export function Models() {
             />
           </Form.Item>
           <Form.Item name="checkpoint_path" label="主模型 .pth" rules={[{ required: true, message: '请输入主模型路径' }]}>
-            <Input placeholder="D:\\models\\model.pth" allowClear />
+            <Input placeholder="D:\\models\\model.pth" allowClear addonAfter={<Button type="link" size="small" onClick={() => chooseFile('checkpoint_path')}>选择</Button>} />
           </Form.Item>
           {framework === 'rvc' ? (
             <Form.Item name="index_path" label="RVC index（可选）">
-              <Input placeholder="D:\\models\\model.index" allowClear />
+              <Input placeholder="D:\\models\\model.index" allowClear addonAfter={<Button type="link" size="small" onClick={() => chooseFile('index_path')}>选择</Button>} />
             </Form.Item>
           ) : (
             <>
               <Form.Item name="config_path" label="config.json" rules={[{ required: true, message: '请输入 config.json 路径' }]}>
-                <Input placeholder="D:\\models\\config.json" allowClear />
+                <Input placeholder="D:\\models\\config.json" allowClear addonAfter={<Button type="link" size="small" onClick={() => chooseFile('config_path')}>选择</Button>} />
               </Form.Item>
               <Form.Item name="diffusion_path" label="浅扩散模型 .pt（可选）">
-                <Input placeholder="D:\\models\\diffusion.pt" allowClear />
+                <Input placeholder="D:\\models\\diffusion.pt" allowClear addonAfter={<Button type="link" size="small" onClick={() => chooseFile('diffusion_path')}>选择</Button>} />
               </Form.Item>
               <Form.Item name="diffusion_config_path" label="浅扩散配置 .yaml/.yml（可选）">
-                <Input placeholder="D:\\models\\diffusion.yaml" allowClear />
+                <Input placeholder="D:\\models\\diffusion.yaml" allowClear addonAfter={<Button type="link" size="small" onClick={() => chooseFile('diffusion_config_path')}>选择</Button>} />
               </Form.Item>
             </>
           )}
@@ -149,6 +163,7 @@ export function Models() {
               render: (_, row) => (
                 <Space>
                   <Button size="small" onClick={() => checkModel(row.id)}>检查</Button>
+                  <Button size="small" onClick={() => openModelDir(row.id)}>打开目录</Button>
                   <Button size="small" disabled={row.is_default} onClick={() => setDefault(row.id)}>设为默认</Button>
                   <Popconfirm title="删除这个模型？" onConfirm={() => deleteModel(row.id)}>
                     <Button size="small" danger>删除</Button>
