@@ -7,12 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-try:
-    from .stem_preparer import StemPreparer
-    from app.infrastructure.storage import ListRepository
-except ModuleNotFoundError:
-    from application.stem_preparer import StemPreparer
-    from infrastructure.storage import ListRepository
+from application.stem_preparer import StemPreparer
+from infrastructure.storage import ListRepository
 
 
 def _now() -> str:
@@ -25,7 +21,10 @@ class WorkService:
         self._stem_preparer = stem_preparer
 
     def create_work(self, payload: dict[str, Any]) -> dict[str, Any]:
-        payload = payload or {}
+        if payload is None:
+            payload = {}
+        if not isinstance(payload, dict):
+            return {"ok": False, "error": "无效的创建参数。"}
         prepared = self._stem_preparer.prepare(payload)
         if not prepared.get("ok"):
             return {"ok": False, "error": str(prepared.get("error") or "输入准备失败。")}
