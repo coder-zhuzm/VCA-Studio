@@ -1,10 +1,11 @@
 import { Button, Card, Descriptions, Form, Input, Select, Space, Tag, Typography, message } from 'antd'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '../api'
-import type { CreateWorkPayload, WorkInputMode, WorkRecord } from '../api/types'
+import type { CreateWorkPayload, ModelRecord, WorkInputMode, WorkRecord } from '../api/types'
 
 export function Create() {
   const [form] = Form.useForm<CreateWorkPayload>()
+  const [models, setModels] = useState<ModelRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [createdWork, setCreatedWork] = useState<WorkRecord>()
   const mode = Form.useWatch('mode', form) ?? 'song'
@@ -12,6 +13,7 @@ export function Create() {
   async function createWork(values: CreateWorkPayload) {
     const payload: CreateWorkPayload = {
       name: values.name,
+      model_id: values.model_id,
       mode: values.mode,
       ...(values.mode === 'song' ? { song_path: values.song_path } : {}),
       ...(values.mode === 'vocals' ? { vocals_path: values.vocals_path } : {}),
@@ -31,12 +33,29 @@ export function Create() {
     }
   }
 
+  useEffect(() => {
+    api.listModels().then((items) => {
+      setModels(items)
+      const preferred = items.find((item) => item.is_default) ?? items[0]
+      if (preferred) form.setFieldValue('model_id', preferred.id)
+    }).catch(() => message.error('加载模型失败'))
+  }, [])
+
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <Card title="新建翻唱">
         <Form form={form} layout="vertical" onFinish={createWork} initialValues={{ mode: 'song' }}>
           <Form.Item name="name" label="作品名称" rules={[{ required: true, message: '请输入作品名称' }]}>
             <Input placeholder="例如：Demo Cover" allowClear />
+          </Form.Item>
+          <Form.Item name="model_id" label="目标模型" rules={[{ required: true, message: '请先选择目标模型' }]}>
+            <Select
+              placeholder="选择已导入模型"
+              options={models.map((model) => ({
+                value: model.id,
+                label: `${model.name} (${model.framework}${model.is_default ? ' 默认' : ''})`,
+              }))}
+            />
           </Form.Item>
           <Form.Item name="mode" label="输入模式" rules={[{ required: true }]}>
             <Select<WorkInputMode>
@@ -75,6 +94,9 @@ export function Create() {
           <Descriptions column={1} size="small">
             <Descriptions.Item label="Work ID">
               <Typography.Text copyable>{createdWork.id}</Typography.Text>
+            </Descriptions.Item>
+            <Descriptions.Item label="模型">
+              <Typography.Text copyable>{createdWork.model_id || '-'}</Typography.Text>
             </Descriptions.Item>
             <Descriptions.Item label="状态">
               <Tag color="blue">{createdWork.status}</Tag>

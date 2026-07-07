@@ -118,6 +118,7 @@ const mock = {
     const work: WorkRecord = {
       id: workId,
       name: payload.name || 'Untitled Work',
+      model_id: payload.model_id,
       input_mode: payload.mode,
       input_files: files.map(([role, path]) => ({
         role,

@@ -98,6 +98,7 @@ export interface WorkLog {
 export interface WorkRecord {
   id: string
   name: string
+  model_id?: string
   input_mode: WorkInputMode
   input_files: WorkInputFile[]
   status: WorkStatus
@@ -111,6 +112,7 @@ export interface WorkRecord {
 
 export interface CreateWorkPayload {
   name: string
+  model_id: string
   mode: WorkInputMode
   song_path?: string
   vocals_path?: string

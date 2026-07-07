@@ -154,6 +154,9 @@ export function Works() {
                 <Typography.Text copyable>{selectedWork.id}</Typography.Text>
               </Descriptions.Item>
               <Descriptions.Item label="名称">{selectedWork.name}</Descriptions.Item>
+              <Descriptions.Item label="模型">
+                <Typography.Text copyable>{selectedWork.model_id || '-'}</Typography.Text>
+              </Descriptions.Item>
               <Descriptions.Item label="输入模式">{selectedWork.input_mode}</Descriptions.Item>
               <Descriptions.Item label="状态">
                 <Tag color={STATUS_COLOR[selectedWork.status]}>{selectedWork.status}</Tag>
