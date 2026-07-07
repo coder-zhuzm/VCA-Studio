@@ -42,6 +42,7 @@ SETTINGS_DB = DATA_DIR / "settings.json"
 MODELS_DIR = DATA_DIR / "models"
 MODELS_DB = DATA_DIR / "models.json"
 WORKS_DIR = DATA_DIR / "works"
+WORKS_DB = DATA_DIR / "works.json"
 
 
 def ensure_data_dirs() -> None:
