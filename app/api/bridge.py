@@ -7,14 +7,22 @@ from typing import Any
 import config
 from application.model_service import ModelService
 from application.runtime_service import RuntimeService
+from application.stem_preparer import StemPreparer
 from infrastructure.storage import ListRepository, SettingsStore
 
 
 class Api:
-    def __init__(self, settings: SettingsStore, runtime: RuntimeService, models: ModelService) -> None:
+    def __init__(
+        self,
+        settings: SettingsStore,
+        runtime: RuntimeService,
+        models: ModelService,
+        stem_preparer: StemPreparer,
+    ) -> None:
         self._settings = settings
         self._runtime = runtime
         self._models = models
+        self._stem_preparer = stem_preparer
         self._window = None
 
     def set_window(self, window) -> None:  # noqa: ANN001
@@ -60,6 +68,9 @@ class Api:
     def set_default_model(self, model_id: str) -> dict[str, Any]:
         return self._models.set_default_model(model_id)
 
+    def prepare_stems(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._stem_preparer.prepare(payload or {})
+
 
 def build_api() -> Api:
     config.ensure_data_dirs()
@@ -68,4 +79,5 @@ def build_api() -> Api:
         settings,
         RuntimeService(settings),
         ModelService(ListRepository(config.MODELS_DB), config.MODELS_DIR),
+        StemPreparer(config.WORKS_DIR),
     )
