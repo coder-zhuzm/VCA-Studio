@@ -243,6 +243,42 @@ def test_stitch() -> None:
         assert 1.9 <= float(choir_probe.stdout.strip()) <= 2.1
 
 
+def _service_multi3(tmp: Path, ok: bool) -> tuple[WorkService, str]:
+    tmp.mkdir(parents=True)
+    for n in ("a", "b", "c"):
+        (tmp / f"model_{n}.pth").write_bytes(b"model")
+    vocal_file = tmp / "vocals.wav"
+    vocal_file.write_bytes(b"audio")
+    model_repo = ListRepository(tmp / "models.json")
+    work_repo = ListRepository(tmp / "works.json")
+    for n, mid in (("a", "ma"), ("b", "mb"), ("c", "mc")):
+        model_repo.add({"id": mid, "framework": "rvc", "files": {"checkpoint": str(tmp / f"model_{n}.pth")}})
+    work = {
+        "id": "w1",
+        "model_id": "ma",
+        "models": [
+            {"model_id": "ma", "params": {}},
+            {"model_id": "mb", "params": {}},
+        ],
+        "params": {},
+        "segments": [
+            {"id": "seg_001", "start": 0, "end": 1, "assigned_model_ids": ["ma"], "mode": "solo"},
+            {"id": "seg_002", "start": 1, "end": 2, "assigned_model_ids": ["mc"], "mode": "solo"},
+        ],
+        "input_mode": "vocals",
+        "input_files": [{"role": "vocals", "stored_path": str(vocal_file)}],
+        "status": "pending",
+        "stage": "prepared",
+        "progress": 10,
+        "steps": [],
+        "logs": [],
+        "work_dir": str(tmp / "work_w1"),
+        "log_path": str(tmp / "work_w1" / "run.log"),
+    }
+    work_repo.add(work)
+    return WorkService(work_repo, StemPreparer(tmp / "works", shutil.which("ffmpeg") or ""), model_repo, None, FakeRunner(ok)), "w1"
+
+
 def test_rerender() -> None:
     if not shutil.which("ffmpeg"):
         return
@@ -254,6 +290,20 @@ def test_rerender() -> None:
         result = service.rerender_work(work_id)
         assert result["ok"], result
         assert Path(result["work"]["output_files"]["final"]).is_file()
+
+
+def test_rerender_infers_missing() -> None:
+    if not shutil.which("ffmpeg"):
+        return
+    with tempfile.TemporaryDirectory() as root:
+        service, work_id = _service_multi3(Path(root) / "r3", True)
+        service.start_work(work_id)
+        work = wait_for(service, work_id, "done")
+        # mc 未在首次渲染中产出，rerender 应自动补推理 mc 再拼接
+        result = service.rerender_work(work_id)
+        assert result["ok"], result
+        assert Path(result["work"]["output_files"]["final"]).is_file()
+        assert (Path(work["work_dir"]) / "renders" / "mc" / "full.wav").is_file()
 
 
 def test_update_segments() -> None:

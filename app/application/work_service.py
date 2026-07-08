@@ -237,14 +237,25 @@ class WorkService:
         if not work_dir:
             return {"ok": False, "error": "Work directory not found"}
         renders = work_dir / "renders"
+        param_map = {entry["model_id"]: entry.get("params") or {} for entry in models}
+        required = {entry["model_id"] for entry in models}
+        required.update(self._segment_model_ids(work))
         full_paths: dict[str, str] = {}
-        for entry in models:
-            path = renders / entry["model_id"] / "full.wav"
-            if path.is_file():
-                full_paths[entry["model_id"]] = str(path)
-        for model_id in self._segment_model_ids(work):
-            if model_id not in full_paths:
-                return {"ok": False, "error": f"片段指派模型 {model_id} 缺少渲染缓存，请整轨重渲染。"}
+        for model_id in sorted(required):
+            render_path = renders / model_id / "full.wav"
+            if render_path.is_file():
+                full_paths[model_id] = str(render_path)
+                continue
+            model = self._model_repo.get(model_id) if self._model_repo else None
+            if not model:
+                return {"ok": False, "error": f"片段指派模型 {model_id} 不存在，无法局部重推理。"}
+            if not self._inference_runner:
+                return {"ok": False, "error": "推理引擎未配置。"}
+            per_work = {**work, "params": param_map.get(model_id) or work.get("params") or {}}
+            result = self._inference_runner.run_rvc(per_work, model, self._vocals_path(work), str(render_path))
+            if not result.get("ok"):
+                return {"ok": False, "error": str(result.get("error") or f"模型 {model_id} 推理失败。")}
+            full_paths[model_id] = str(render_path)
         try:
             merged = work_dir / "inference" / "merged_vocal.wav"
             self._stitch.stitch(segments, full_paths, self._vocals_path(work), str(merged), str(work.get("log_path") or work_dir / "run.log"))
