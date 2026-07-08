@@ -87,6 +87,18 @@ export interface ModelMutationResult {
 export type WorkInputMode = 'song' | 'vocals' | 'stems'
 export type WorkStatus = 'pending' | 'running' | 'done' | 'failed'
 export type WorkStage = 'prepared' | 'queued' | 'inferencing' | 'mixing' | 'exported' | 'failed'
+export type SegmentMode = 'solo' | 'choir' | 'mute' | 'original'
+
+export interface Segment {
+  id: string
+  start: number
+  end?: number | null
+  text?: string
+  assigned_model_ids: string[]
+  mode: SegmentMode
+  fade_in?: number
+  fade_out?: number
+}
 
 export interface WorkInputFile {
   role: string
@@ -108,11 +120,18 @@ export interface WorkStep {
   message: string
 }
 
+export interface WorkModelEntry {
+  model_id: string
+  params?: WorkParams
+}
+
 export interface WorkRecord {
   id: string
   name: string
   model_id?: string
+  models?: WorkModelEntry[]
   params?: WorkParams
+  segments?: Segment[]
   input_mode: WorkInputMode
   input_files: WorkInputFile[]
   status: WorkStatus
@@ -122,6 +141,7 @@ export interface WorkRecord {
   logs: WorkLog[]
   work_dir?: string
   log_path?: string
+  output_files?: Record<string, string>
   created_at: string
   updated_at: string
 }
@@ -196,6 +216,8 @@ export interface DesktopApi {
   read_work_log: (workId: string) => Promise<WorkLogContentResult>
   open_work_dir: (workId: string) => Promise<OpenPathResult>
   open_work_log: (workId: string) => Promise<OpenPathResult>
+  update_work_segments: (workId: string, segments: Segment[]) => Promise<WorkMutationResult>
+  rerender_work: (workId: string) => Promise<WorkMutationResult>
 }
 
 declare global {

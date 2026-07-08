@@ -251,6 +251,43 @@ class WorkService:
         self._finish_work(work, str(merged))
         return {"ok": True, "work": self.get_work(work_id)["work"]}
 
+    def update_work_segments(self, work_id: str, segments: Any) -> dict[str, Any]:
+        work = self._repo.get(str(work_id))
+        if not work:
+            return {"ok": False, "error": "Work not found"}
+        if work.get("status") == "running":
+            return {"ok": False, "error": "作品正在处理中，无法编辑时间轴。"}
+        if not isinstance(segments, list):
+            return {"ok": False, "error": "segments 必须是数组。"}
+        normalized: list[dict[str, Any]] = []
+        for idx, seg in enumerate(segments):
+            if not isinstance(seg, dict):
+                return {"ok": False, "error": f"片段 {idx} 格式错误。"}
+            try:
+                start = float(seg.get("start") or 0)
+                end = None if seg.get("end") in (None, "") else float(seg.get("end"))
+            except (TypeError, ValueError):
+                return {"ok": False, "error": f"片段 {idx} 时间格式错误。"}
+            assigned = seg.get("assigned_model_ids")
+            if assigned is not None and not isinstance(assigned, list):
+                return {"ok": False, "error": f"片段 {idx} assigned_model_ids 格式错误。"}
+            normalized.append(
+                {
+                    "id": str(seg.get("id") or f"seg_{idx:03d}"),
+                    "start": start,
+                    "end": end,
+                    "text": str(seg.get("text") or ""),
+                    "assigned_model_ids": [str(m) for m in (assigned or [])],
+                    "mode": str(seg.get("mode") or "solo"),
+                    "fade_in": float(seg.get("fade_in") if seg.get("fade_in") is not None else 0.03),
+                    "fade_out": float(seg.get("fade_out") if seg.get("fade_out") is not None else 0.03),
+                }
+            )
+        updated = {**work, "segments": normalized, "updated_at": _now()}
+        self._write_metadata(updated)
+        self._repo.update_item(str(work["id"]), updated)
+        return {"ok": True, "work": updated}
+
     def rename_work(self, work_id: str, name: str) -> dict[str, Any]:
         work = self._repo.get(str(work_id))
         if not work:

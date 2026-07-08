@@ -9,6 +9,7 @@ import type {
   RuntimeComponentResult,
   RuntimeComponentStatus,
   RuntimeStatus,
+  Segment,
   SetRuntimePathResult,
   SetSettingResult,
   WorkLogContentResult,
@@ -236,6 +237,18 @@ const mock = {
     const work = mockWorks.find((item) => item.id === workId)
     return work ? { ok: true, path: work.log_path } : { ok: false, error: 'Work not found' }
   },
+  async update_work_segments(workId: string, segments: unknown): Promise<WorkMutationResult> {
+    const work = mockWorks.find((item) => item.id === workId)
+    if (!work) return { ok: false, error: 'Work not found' }
+    work.segments = segments as never
+    work.updated_at = new Date().toISOString()
+    return { ok: true, work }
+  },
+  async rerender_work(workId: string): Promise<WorkMutationResult> {
+    const work = mockWorks.find((item) => item.id === workId)
+    if (!work) return { ok: false, error: 'Work not found' }
+    return { ok: true, work }
+  },
 }
 
 function wantsDesktop() {
@@ -285,4 +298,6 @@ export const api = {
   readWorkLog: async (workId: string) => (await desktop()).read_work_log(workId),
   openWorkDir: async (workId: string) => (await desktop()).open_work_dir(workId),
   openWorkLog: async (workId: string) => (await desktop()).open_work_log(workId),
+  updateWorkSegments: async (workId: string, segments: Segment[]) => (await desktop()).update_work_segments(workId, segments),
+  rerenderWork: async (workId: string) => (await desktop()).rerender_work(workId),
 }

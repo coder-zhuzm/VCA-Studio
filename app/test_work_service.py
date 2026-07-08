@@ -256,6 +256,20 @@ def test_rerender() -> None:
         assert Path(result["work"]["output_files"]["final"]).is_file()
 
 
+def test_update_segments() -> None:
+    with tempfile.TemporaryDirectory() as root:
+        service, work_id = _service_multi(Path(root) / "m", True)
+        bad = service.update_work_segments(work_id, {"not": "a list"})
+        assert not bad["ok"]
+        segs = [
+            {"id": "s1", "start": 0, "end": 2, "assigned_model_ids": ["ma"], "mode": "solo"},
+        ]
+        ok = service.update_work_segments(work_id, segs)
+        assert ok["ok"]
+        assert ok["work"]["segments"][0]["id"] == "s1"
+        assert ok["work"]["segments"][0]["end"] == 2
+
+
 class _FakeEngine:
     framework: str
 
@@ -296,4 +310,5 @@ if __name__ == "__main__":
     smoke()
     test_stitch()
     test_rerender()
+    test_update_segments()
     test_registry()

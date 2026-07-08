@@ -157,6 +157,9 @@ class Api:
     def rerender_work(self, work_id: str) -> dict[str, Any]:
         return self._works.rerender_work(work_id)
 
+    def update_work_segments(self, work_id: str, segments: Any) -> dict[str, Any]:
+        return self._works.update_work_segments(work_id, segments)
+
 
 def build_api() -> Api:
     config.ensure_data_dirs()

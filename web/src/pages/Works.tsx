@@ -1,5 +1,6 @@
 import { Button, Card, Descriptions, Drawer, Popconfirm, Progress, Space, Table, Tag, Typography, message } from 'antd'
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import type { WorkInputFile, WorkLog, WorkRecord, WorkStage, WorkStatus, WorkStep } from '../api/types'
 
@@ -20,6 +21,7 @@ const STAGE_COLOR: Record<WorkStage, string> = {
 }
 
 export function Works() {
+  const navigate = useNavigate()
   const [works, setWorks] = useState<WorkRecord[]>([])
   const [selectedWork, setSelectedWork] = useState<WorkRecord>()
   const [loading, setLoading] = useState(false)
@@ -225,6 +227,9 @@ export function Works() {
                   </Button>
                   <Button size="small" onClick={() => exportWork(row.id)}>
                     导出
+                  </Button>
+                  <Button size="small" type="link" onClick={() => navigate(`/editor/${row.id}`)}>
+                    编辑
                   </Button>
                   <Popconfirm title="删除这个作品？" onConfirm={() => deleteWork(row.id)}>
                     <Button size="small" danger loading={deletingId === row.id}>删除</Button>

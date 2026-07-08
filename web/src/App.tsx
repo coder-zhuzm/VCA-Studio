@@ -1,6 +1,7 @@
 import { Layout, Menu, Typography } from 'antd'
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Create } from './pages/Create'
+import { Editor } from './pages/Editor'
 import { Home } from './pages/Home'
 import { Models } from './pages/Models'
 import { Runtime } from './pages/Runtime'
@@ -12,6 +13,7 @@ const items = [
   { key: '/models', label: <Link to="/models">模型管理</Link> },
   { key: '/create', label: <Link to="/create">新建翻唱</Link> },
   { key: '/works', label: <Link to="/works">作品库</Link> },
+  { key: '/editor', label: <Link to="/editor">时间轴编辑</Link> },
 ]
 
 export function App() {
@@ -33,6 +35,7 @@ export function App() {
             <Route path="/models" element={<Models />} />
             <Route path="/create" element={<Create />} />
             <Route path="/works" element={<Works />} />
+            <Route path="/editor/:id" element={<Editor />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Layout.Content>
