@@ -221,15 +221,39 @@ def test_stitch() -> None:
         subprocess.run([shutil.which("ffmpeg"), "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-t", "2", str(renders / "ma" / "full.wav")], capture_output=True, check=True)
         subprocess.run([shutil.which("ffmpeg"), "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-t", "2", str(renders / "mb" / "full.wav")], capture_output=True, check=True)
 
-        segments = [
+        full = {"ma": str(renders / "ma" / "full.wav"), "mb": str(renders / "mb" / "full.wav")}
+
+        solo_segments = [
             {"id": "s1", "start": 0, "end": 1, "assigned_model_ids": ["ma"], "mode": "solo"},
             {"id": "s2", "start": 1, "end": 2, "assigned_model_ids": ["mb"], "mode": "solo"},
         ]
         out = root_path / "merged.wav"
-        StitchService().stitch(segments, {"ma": str(renders / "ma" / "full.wav"), "mb": str(renders / "mb" / "full.wav")}, str(vocals), str(out), str(root_path / "log.txt"))
+        StitchService().stitch(solo_segments, full, str(vocals), str(out), str(root_path / "log.txt"))
         assert out.is_file()
         probe = subprocess.run([shutil.which("ffprobe"), "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(out)], capture_output=True, text=True, check=True)
         assert 1.9 <= float(probe.stdout.strip()) <= 2.1
+
+        choir_segments = [
+            {"id": "s1", "start": 0, "end": 2, "assigned_model_ids": ["ma", "mb"], "mode": "choir"},
+        ]
+        choir_out = root_path / "choir.wav"
+        StitchService().stitch(choir_segments, full, str(vocals), str(choir_out), str(root_path / "log2.txt"))
+        assert choir_out.is_file()
+        choir_probe = subprocess.run([shutil.which("ffprobe"), "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(choir_out)], capture_output=True, text=True, check=True)
+        assert 1.9 <= float(choir_probe.stdout.strip()) <= 2.1
+
+
+def test_rerender() -> None:
+    if not shutil.which("ffmpeg"):
+        return
+    with tempfile.TemporaryDirectory() as root:
+        service, work_id = _service_multi(Path(root) / "r", True)
+        service.start_work(work_id)
+        work = wait_for(service, work_id, "done")
+        assert Path(work["output_files"]["final"]).is_file()
+        result = service.rerender_work(work_id)
+        assert result["ok"], result
+        assert Path(result["work"]["output_files"]["final"]).is_file()
 
 
 class _FakeEngine:
@@ -271,4 +295,5 @@ def test_registry() -> None:
 if __name__ == "__main__":
     smoke()
     test_stitch()
+    test_rerender()
     test_registry()

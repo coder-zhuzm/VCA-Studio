@@ -219,6 +219,38 @@ class WorkService:
         self._repo.update_item(str(updated["id"]), updated)
         return {"ok": True, "work": updated}
 
+    def rerender_work(self, work_id: str) -> dict[str, Any]:
+        work = self._repo.get(str(work_id))
+        if not work:
+            return {"ok": False, "error": "Work not found"}
+        if work.get("status") in ("pending", "running"):
+            return {"ok": False, "error": "作品正在处理中，无法重渲染。"}
+        segments = work.get("segments") or []
+        if not segments:
+            return {"ok": False, "error": "该作品无时间轴，需要整轨重渲染。"}
+        models = self._work_models(work)
+        if not models:
+            return {"ok": False, "error": "作品未指定模型。"}
+        work_dir = self._work_dir_from_record(work)
+        if not work_dir:
+            return {"ok": False, "error": "Work directory not found"}
+        renders = work_dir / "renders"
+        full_paths: dict[str, str] = {}
+        for entry in models:
+            path = renders / entry["model_id"] / "full.wav"
+            if path.is_file():
+                full_paths[entry["model_id"]] = str(path)
+        for model_id in self._segment_model_ids(work):
+            if model_id not in full_paths:
+                return {"ok": False, "error": f"片段指派模型 {model_id} 缺少渲染缓存，请整轨重渲染。"}
+        try:
+            merged = work_dir / "inference" / "merged_vocal.wav"
+            self._stitch.stitch(segments, full_paths, self._vocals_path(work), str(merged), str(work.get("log_path") or work_dir / "run.log"))
+        except Exception as exc:  # noqa: BLE001 - report stitch failure to the caller
+            return {"ok": False, "error": str(exc)}
+        self._finish_work(work, str(merged))
+        return {"ok": True, "work": self.get_work(work_id)["work"]}
+
     def rename_work(self, work_id: str, name: str) -> dict[str, Any]:
         work = self._repo.get(str(work_id))
         if not work:

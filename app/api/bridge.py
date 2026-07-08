@@ -154,6 +154,9 @@ class Api:
     def open_work_log(self, work_id: str) -> dict[str, Any]:
         return self._works.open_work_log(work_id)
 
+    def rerender_work(self, work_id: str) -> dict[str, Any]:
+        return self._works.rerender_work(work_id)
+
 
 def build_api() -> Api:
     config.ensure_data_dirs()

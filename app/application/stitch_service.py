@@ -56,7 +56,17 @@ class StitchService:
             )
         if not output.is_file():
             raise RuntimeError("拼接未生成输出文件。")
+        self._limit(output, log_path)
         return str(output)
+
+    def _limit(self, path: Path, log_path: str) -> None:
+        limited = path.with_suffix(".limited.wav")
+        self._run(
+            [self._ffmpeg, "-y", "-i", str(path), "-af", "alimiter=level_in=1:limit=0.8:asc=1:attack=5:release=50", str(limited)],
+            log_path,
+        )
+        if limited.is_file():
+            limited.replace(path)
 
     def _render_segment(self, clip: Path, seg: dict[str, Any], dur: float, sr: int, ch: int, model_full_paths: dict[str, str], vocals_path: str, log_path: str) -> None:
         mode = str(seg.get("mode") or "solo")
@@ -91,12 +101,16 @@ class StitchService:
         self._run(cmd, log_path)
 
     def _mix(self, sources: list[str], out: Path, fade_in: float, fade_out: float, log_path: str) -> None:
-        cmd = [self._ffmpeg, "-y", *sum((["-i", s] for s in sources), [])]
+        count = len(sources)
+        gain = 1 / (count ** 0.5)
+        labels = "".join(f"[v{i}]" for i in range(count))
+        head = "".join(f"[{i}:a]volume={gain:.4f}[v{i}];" for i in range(count))
         fade = self._fade_filter(fade_in, fade_out, None)
-        filter_complex = f"amix=inputs={len(sources)}:normalize=1"
+        tail = f"{labels}amix=inputs={count}:normalize=0"
         if fade:
-            filter_complex = f"{filter_complex},{fade}"
-        cmd += ["-filter_complex", filter_complex, str(out)]
+            tail = f"{tail},{fade}"
+        filter_complex = f"{head}{tail}"
+        cmd = [self._ffmpeg, "-y", *sum((["-i", s] for s in sources), []), "-filter_complex", filter_complex, str(out)]
         self._run(cmd, log_path)
 
     def _silence(self, out: Path, dur: float, sr: int, ch: int, log_path: str) -> None:
