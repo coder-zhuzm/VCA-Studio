@@ -2,7 +2,7 @@ import { Button, Card, Input, InputNumber, Select, Space, Table, Tag, Typography
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api'
-import type { ModelRecord, Segment, SegmentMode, WorkRecord } from '../api/types'
+import type { AnalysisNote, ModelRecord, Segment, SegmentMode, WorkRecord } from '../api/types'
 
 const MODE_OPTIONS: { label: string; value: SegmentMode }[] = [
   { label: '独唱 solo', value: 'solo' },
@@ -34,6 +34,7 @@ export function Editor() {
   const [saving, setSaving] = useState(false)
   const [rendering, setRendering] = useState(false)
   const [selectedKeys, setSelectedKeys] = useState<string[]>([])
+  const [lyricText, setLyricText] = useState('')
 
   const load = useCallback(async () => {
     const result = await api.getWork(id)
@@ -196,6 +197,40 @@ export function Editor() {
     }, 1500)
   }
 
+  function lyricLines(): string[] {
+    return lyricText
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+  }
+
+  async function analyze() {
+    setSaving(true)
+    try {
+      const lines = lyricLines()
+      const result = await api.analyzeWork(id, lines.length ? lines : undefined)
+      if (!result.ok || !result.work) {
+        message.error(result.error ?? '解析失败')
+        return
+      }
+      setWork(result.work)
+      message.success(`解析完成，检测到 ${result.work.analysis?.notes.length ?? 0} 个音符`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function alignLyrics() {
+    const lines = lyricLines()
+    const result = await api.setWorkLyrics(id, lines)
+    if (!result.ok || !result.work) {
+      message.error(result.error ?? '对齐失败')
+      return
+    }
+    setWork(result.work)
+    message.success('歌词已对齐')
+  }
+
   const columns = [
     {
       title: 'ID',
@@ -321,6 +356,55 @@ export function Editor() {
           pagination={false}
           rowSelection={{ selectedRowKeys: selectedKeys, onChange: (keys) => setSelectedKeys(keys as string[]) }}
         />
+      </Card>
+
+      <Card title="原唱解析 (Vocal to MIDI & Lyrics)">
+        <Space style={{ marginBottom: 12 }}>
+          <Button onClick={analyze} loading={saving}>
+            解析音高 → 粗 MIDI
+          </Button>
+          <Typography.Text type="secondary">基于自相关基频估计，粗粒度；后续可接入 RMVPE/CREPE/Basic Pitch</Typography.Text>
+        </Space>
+        <Typography.Paragraph>导入歌词（每行一句）：</Typography.Paragraph>
+        <Input.TextArea rows={4} value={lyricText} onChange={(e) => setLyricText(e.target.value)} />
+        <Button style={{ marginTop: 8 }} onClick={alignLyrics}>
+          对齐歌词
+        </Button>
+        {work?.analysis ? (
+          <Space direction="vertical" style={{ width: '100%', marginTop: 16 }}>
+            <Tag color="blue">音符数：{work.analysis.notes.length}</Tag>
+            <Table<AnalysisNote>
+              rowKey={(row) => `${row.start}-${row.midi}`}
+              size="small"
+              pagination={false}
+              dataSource={work.analysis.notes.slice(0, 60)}
+              columns={[
+                { title: '起始(s)', dataIndex: 'start' },
+                { title: '结束(s)', dataIndex: 'end' },
+                { title: 'MIDI', dataIndex: 'midi' },
+                { title: '频率(Hz)', dataIndex: 'freq' },
+              ]}
+            />
+            <Typography.Title level={5} style={{ marginBottom: 4 }}>
+              对齐歌词
+            </Typography.Title>
+            {work.analysis.lyrics_aligned.length ? (
+              <Table<{ start: number; end: number; text: string }>
+                rowKey={(row) => `${row.start}-${row.text}`}
+                size="small"
+                pagination={false}
+                dataSource={work.analysis.lyrics_aligned}
+                columns={[
+                  { title: '起始(s)', dataIndex: 'start' },
+                  { title: '结束(s)', dataIndex: 'end' },
+                  { title: '歌词', dataIndex: 'text' },
+                ]}
+              />
+            ) : (
+              <Typography.Text type="secondary">暂无对齐歌词（解析音高后点击「对齐歌词」）。</Typography.Text>
+            )}
+          </Space>
+        ) : null}
       </Card>
     </Space>
   )

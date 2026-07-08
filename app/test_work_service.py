@@ -270,6 +270,26 @@ def test_update_segments() -> None:
         assert ok["work"]["segments"][0]["end"] == 2
 
 
+def test_pitch() -> None:
+    if not shutil.which("ffmpeg"):
+        return
+    from infrastructure.pitch_analyzer import PitchAnalyzer, align_lyrics
+
+    with tempfile.TemporaryDirectory() as root:
+        root_path = Path(root)
+        tone = root_path / "tone.wav"
+        subprocess.run([shutil.which("ffmpeg"), "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=2", str(tone)], capture_output=True, check=True)
+        result = PitchAnalyzer().analyze(str(tone))
+        assert result["ok"], result
+        assert result["notes"]
+        midis = [note["midi"] for note in result["notes"]]
+        assert any(68 <= midi <= 70 for midi in midis), midis
+
+        aligned = align_lyrics(["line one", "line two"], result["notes"])
+        assert len(aligned) == 2
+        assert aligned[0]["text"] == "line one"
+
+
 class _FakeEngine:
     framework: str
 
@@ -311,4 +331,5 @@ if __name__ == "__main__":
     test_stitch()
     test_rerender()
     test_update_segments()
+    test_pitch()
     test_registry()

@@ -7,6 +7,7 @@ import type {
   ModelRecord,
   OpenPathResult,
   RuntimeComponentResult,
+  Analysis,
   RuntimeComponentStatus,
   RuntimeStatus,
   Segment,
@@ -249,6 +250,26 @@ const mock = {
     if (!work) return { ok: false, error: 'Work not found' }
     return { ok: true, work }
   },
+  async analyze_work(workId: string, lyrics?: string[]): Promise<WorkMutationResult> {
+    const work = mockWorks.find((item) => item.id === workId)
+    if (!work) return { ok: false, error: 'Work not found' }
+    work.analysis = {
+      notes: [],
+      lyrics: lyrics ?? [],
+      lyrics_aligned: [],
+      created_at: new Date().toISOString(),
+    }
+    work.updated_at = new Date().toISOString()
+    return { ok: true, work }
+  },
+  async set_work_lyrics(workId: string, lyrics: string[]): Promise<WorkMutationResult> {
+    const work = mockWorks.find((item) => item.id === workId)
+    if (!work) return { ok: false, error: 'Work not found' }
+    const prev = (work.analysis as Analysis | undefined) ?? { notes: [], lyrics: [], lyrics_aligned: [], created_at: '' }
+    work.analysis = { ...prev, lyrics, lyrics_aligned: [], created_at: new Date().toISOString() }
+    work.updated_at = new Date().toISOString()
+    return { ok: true, work }
+  },
 }
 
 function wantsDesktop() {
@@ -300,4 +321,6 @@ export const api = {
   openWorkLog: async (workId: string) => (await desktop()).open_work_log(workId),
   updateWorkSegments: async (workId: string, segments: Segment[]) => (await desktop()).update_work_segments(workId, segments),
   rerenderWork: async (workId: string) => (await desktop()).rerender_work(workId),
+  analyzeWork: async (workId: string, lyrics?: string[]) => (await desktop()).analyze_work(workId, lyrics),
+  setWorkLyrics: async (workId: string, lyrics: string[]) => (await desktop()).set_work_lyrics(workId, lyrics),
 }

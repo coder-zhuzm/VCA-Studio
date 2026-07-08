@@ -100,6 +100,26 @@ export interface Segment {
   fade_out?: number
 }
 
+export interface AnalysisNote {
+  start: number
+  end: number
+  midi: number
+  freq?: number
+}
+
+export interface AnalysisLyric {
+  start: number
+  end: number
+  text: string
+}
+
+export interface Analysis {
+  notes: AnalysisNote[]
+  lyrics: string[]
+  lyrics_aligned: AnalysisLyric[]
+  created_at: string
+}
+
 export interface WorkInputFile {
   role: string
   source_path: string
@@ -142,6 +162,7 @@ export interface WorkRecord {
   work_dir?: string
   log_path?: string
   output_files?: Record<string, string>
+  analysis?: Analysis
   created_at: string
   updated_at: string
 }
@@ -218,6 +239,8 @@ export interface DesktopApi {
   open_work_log: (workId: string) => Promise<OpenPathResult>
   update_work_segments: (workId: string, segments: Segment[]) => Promise<WorkMutationResult>
   rerender_work: (workId: string) => Promise<WorkMutationResult>
+  analyze_work: (workId: string, lyrics?: string[]) => Promise<WorkMutationResult>
+  set_work_lyrics: (workId: string, lyrics: string[]) => Promise<WorkMutationResult>
 }
 
 declare global {

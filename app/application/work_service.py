@@ -19,6 +19,7 @@ from application.runtime_service import RuntimeService
 from application.segment_builder import build_segments
 from application.stem_preparer import StemPreparer
 from application.stitch_service import StitchService
+from infrastructure.pitch_analyzer import PitchAnalyzer, align_lyrics
 from infrastructure.storage import ListRepository
 from infrastructure.uvr_tool import UvrTool
 
@@ -93,6 +94,7 @@ class WorkService:
         self._inference_runner = inference_runner
         self._uvr_tool = uvr_tool
         self._stitch = StitchService(getattr(stem_preparer, "_ffmpeg_path", ""))
+        self._pitch = PitchAnalyzer(getattr(stem_preparer, "_ffmpeg_path", ""))
         self._queue: queue.Queue[str] = queue.Queue()
         self._queued: set[str] = set()
         self._queue_lock = threading.Lock()
@@ -284,6 +286,45 @@ class WorkService:
                 }
             )
         updated = {**work, "segments": normalized, "updated_at": _now()}
+        self._write_metadata(updated)
+        self._repo.update_item(str(work["id"]), updated)
+        return {"ok": True, "work": updated}
+
+    def analyze_work(self, work_id: str, lyrics: list[str] | None = None) -> dict[str, Any]:
+        work = self._repo.get(str(work_id))
+        if not work:
+            return {"ok": False, "error": "Work not found"}
+        vocals = self._vocals_path(work)
+        if not vocals or not Path(vocals).is_file():
+            return {"ok": False, "error": "作品还没有可用于解析的人声。"}
+        result = self._pitch.analyze(vocals, str(work.get("log_path") or ""))
+        if not result.get("ok"):
+            return {"ok": False, "error": str(result.get("error") or "音高解析失败。")}
+        notes = result.get("notes") or []
+        existing = work.get("analysis") or {}
+        lyric_lines = lyrics if lyrics is not None else (existing.get("lyrics") or [])
+        aligned = align_lyrics(lyric_lines, notes) if lyric_lines else []
+        analysis = {
+            "notes": notes,
+            "lyrics": lyric_lines,
+            "lyrics_aligned": aligned,
+            "created_at": _now(),
+        }
+        updated = {**work, "analysis": analysis, "updated_at": _now()}
+        self._write_metadata(updated)
+        self._repo.update_item(str(work["id"]), updated)
+        return {"ok": True, "work": updated}
+
+    def set_work_lyrics(self, work_id: str, lyrics: list[str]) -> dict[str, Any]:
+        work = self._repo.get(str(work_id))
+        if not work:
+            return {"ok": False, "error": "Work not found"}
+        analysis = dict(work.get("analysis") or {})
+        lines = [line for line in (lyrics or []) if str(line).strip()]
+        analysis["lyrics"] = lines
+        analysis["lyrics_aligned"] = align_lyrics(lines, analysis.get("notes") or [])
+        analysis["created_at"] = _now()
+        updated = {**work, "analysis": analysis, "updated_at": _now()}
         self._write_metadata(updated)
         self._repo.update_item(str(work["id"]), updated)
         return {"ok": True, "work": updated}

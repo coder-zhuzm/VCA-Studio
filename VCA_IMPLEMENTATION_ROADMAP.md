@@ -916,18 +916,6 @@ P1 多模型混唱 MVP 已落地：
 [x] 拆分/合并/删除片段（前端）
 ```
 
-### 阶段 5：Audio Editor Lite（2026-07-08）
-
-前端音频编辑器 MVP 已落地（`web/src/pages/Editor.tsx`）：
-
-- 路由 `/editor/:id`，作品库「编辑」入口进入。
-- 片段时间轴可编辑：起始/结束、歌词、指派模型（多选）、模式（solo/choir/mute/original）、淡入淡出。
-- 工具栏：添加片段、拆分选中、合并连续选中、删除选中、保存时间轴。
-- 「局部重渲染」= 保存时间轴 + `rerender_work`（基于已有 renders 重拼接）；「整轨重渲染」= `start_work`。
-- 后端新增 `update_work_segments`（保存编辑后的时间轴，`pending` 状态可编辑）、`bridge` 暴露；`DesktopApi`/mock/前端 `api` 同步。
-
-说明：波形可视化、clip 拖动预览、音量包络仍属后续增强；当前以可编辑片段表 + 后端重渲染实现 MVP 闭环。
-
 ### 阶段 4 进度确认（2026-07-08）
 
 合唱与时间轴增强后端已落地：
@@ -937,6 +925,29 @@ P1 多模型混唱 MVP 已落地：
 - `bridge` 暴露 `rerender_work`。
 
 说明：时间轴拖拽、拆分/合并/删除为前端对 `segments` 的编辑操作，后端已支持任意片段结构，无需改动；前端 UI 尚未实现。
+
+### 阶段 5：Audio Editor Lite（2026-07-08）
+
+前端音频编辑器 MVP 已落地（`web/src/pages/Editor.tsx`）：
+
+- 路由 `/editor/:id`，作品库「编辑」入口进入。
+- 片段时间轴可编辑：起始/结束、歌词、指派模型（多选）、模式（solo/choir/mute/original）、淡入淡出。
+- 工具栏：添加片段、拆分选中、合并连续选中、删除选中、保存时间轴。
+- 「局部重渲染」= 保存时间轴 + `rerender_work`；「整轨重渲染」= `start_work`。
+- 后端新增 `update_work_segments`（`pending` 可编辑）、`bridge` 暴露；`DesktopApi`/mock/前端 `api` 同步。
+
+说明：波形可视化、clip 拖动预览、音量包络仍属后续增强；当前以可编辑片段表 + 后端重渲染实现 MVP 闭环。
+
+### 阶段 6：Vocal to MIDI & Lyrics / 原唱解析（2026-07-08）
+
+高级路线 MVP（P3.2 音高追踪 + 歌词对齐）已落地：
+
+- `infrastructure/pitch_analyzer.py`：自相关基频估计（ffmpeg 归一化到单声道 16k），逐帧估计 → 合并稳定音高区为粗 MIDI notes；无外部 ML 依赖，可用合成音频验证（440Hz → MIDI 69）。
+- `align_lyrics`：导入歌词按音符时间跨度均匀对齐（naive 占位，待 WhisperX / MFA forced alignment）。
+- `WorkService.analyze_work` / `set_work_lyrics`：解析结果存入 `work.analysis`（notes / lyrics / lyrics_aligned）。
+- `bridge` 暴露 `analyze_work` / `set_work_lyrics`；Editor 页新增「原唱解析」面板（解析音高、导入并对齐歌词、展示音符与对齐结果）。
+
+说明：当前为粗粒度自相关估计；后续可接入 RMVPE/CREPE/Basic Pitch 提升精度，ASR 做歌词识别，DiffSinger/NNSVS 做 Guide Singer 重唱。Guide Singer 重唱路线（P3.6）未做。
 
 ### P3 必做
 

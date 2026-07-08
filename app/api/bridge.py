@@ -160,6 +160,12 @@ class Api:
     def update_work_segments(self, work_id: str, segments: Any) -> dict[str, Any]:
         return self._works.update_work_segments(work_id, segments)
 
+    def analyze_work(self, work_id: str, lyrics: list[str] | None = None) -> dict[str, Any]:
+        return self._works.analyze_work(work_id, lyrics)
+
+    def set_work_lyrics(self, work_id: str, lyrics: list[str]) -> dict[str, Any]:
+        return self._works.set_work_lyrics(work_id, lyrics)
+
 
 def build_api() -> Api:
     config.ensure_data_dirs()
