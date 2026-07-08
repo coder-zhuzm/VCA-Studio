@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import config
+from infrastructure.model_downloader import extract_model
 from infrastructure.storage import ListRepository
 
 FRAMEWORKS = {"rvc", "so-vits-svc"}
@@ -73,6 +74,34 @@ class ModelService:
         except OSError as exc:
             shutil.rmtree(model_dir, ignore_errors=True)
             return {"ok": False, "error": str(exc)}
+
+    def import_model_from_url(self, payload: dict[str, Any]) -> dict[str, Any]:
+        payload = payload or {}
+        url = str(payload.get("url") or "").strip()
+        if not url:
+            return {"ok": False, "error": "缺少模型链接。"}
+        model_id = f"model_{uuid.uuid4().hex[:12]}"
+        model_dir = self._models_dir / model_id
+        try:
+            extracted = extract_model(url, model_dir)
+        except Exception as exc:  # noqa: BLE001 - surface download/extract errors to caller
+            shutil.rmtree(model_dir, ignore_errors=True)
+            return {"ok": False, "error": str(exc)}
+        first = len(self._repo.all()) == 0
+        record = {
+            "id": model_id,
+            "name": str(payload.get("name") or "").strip() or extracted["framework"],
+            "framework": extracted["framework"],
+            "files": extracted["files"],
+            "status": "missing",
+            "is_default": first,
+            "created_at": _now(),
+            "updated_at": _now(),
+            "checks": [],
+        }
+        self._repo.add(record)
+        checked = self.check_model(model_id)
+        return {"ok": True, "model": checked["model"]}
 
     def delete_model(self, model_id: str) -> dict[str, Any]:
         model = self._repo.get(str(model_id))

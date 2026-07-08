@@ -84,6 +84,11 @@ export interface ModelMutationResult {
   models?: ModelRecord[]
 }
 
+export interface ImportModelFromUrlPayload {
+  url: string
+  name?: string
+}
+
 export type WorkInputMode = 'song' | 'vocals' | 'stems'
 export type WorkStatus = 'pending' | 'running' | 'done' | 'failed'
 export type WorkStage = 'prepared' | 'queued' | 'inferencing' | 'mixing' | 'exported' | 'failed'
@@ -226,6 +231,7 @@ export interface DesktopApi {
   check_model: (id: string) => Promise<ModelMutationResult>
   set_default_model: (id: string) => Promise<ModelMutationResult>
   open_model_dir: (id: string) => Promise<OpenPathResult>
+  import_model_from_url: (payload: ImportModelFromUrlPayload) => Promise<ModelMutationResult>
   create_work: (payload: CreateWorkPayload) => Promise<WorkMutationResult>
   list_works: () => Promise<WorkMutationResult>
   get_work: (workId: string) => Promise<WorkMutationResult>

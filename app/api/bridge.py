@@ -160,6 +160,9 @@ class Api:
     def update_work_segments(self, work_id: str, segments: Any) -> dict[str, Any]:
         return self._works.update_work_segments(work_id, segments)
 
+    def import_model_from_url(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._models.import_model_from_url(payload)
+
     def analyze_work(self, work_id: str, lyrics: list[str] | None = None) -> dict[str, Any]:
         return self._works.analyze_work(work_id, lyrics)
 

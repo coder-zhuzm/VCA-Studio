@@ -3,6 +3,7 @@ import type {
   CreateWorkPayload,
   DesktopApi,
   ImportModelPayload,
+  ImportModelFromUrlPayload,
   ModelMutationResult,
   ModelRecord,
   OpenPathResult,
@@ -128,6 +129,21 @@ const mock = {
     const model = mockModels.find((item) => item.id === id)
     const first = model ? Object.values(model.files)[0] : ''
     return model ? { ok: true, path: first ? first.replace(/[\\/][^\\/]*$/, '') : '' } : { ok: false, error: '模型不存在。' }
+  },
+  async import_model_from_url(payload: ImportModelFromUrlPayload): Promise<ModelMutationResult> {
+    const model: ModelRecord = {
+      id: `model_${Date.now()}`,
+      name: payload.name || 'remote-model',
+      framework: 'rvc',
+      files: { checkpoint: 'model.pth' },
+      status: 'ready',
+      is_default: mockModels.length === 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      checks: [],
+    }
+    mockModels.unshift(model)
+    return { ok: true, model }
   },
   async create_work(payload: CreateWorkPayload): Promise<WorkMutationResult> {
     const now = new Date().toISOString()
@@ -308,6 +324,7 @@ export const api = {
   checkModel: async (id: string) => (await desktop()).check_model(id),
   setDefaultModel: async (id: string) => (await desktop()).set_default_model(id),
   openModelDir: async (id: string) => (await desktop()).open_model_dir(id),
+  importModelFromUrl: async (payload: ImportModelFromUrlPayload) => (await desktop()).import_model_from_url(payload),
   createWork: async (payload: CreateWorkPayload) => (await desktop()).create_work(payload),
   listWorks: async () => (await desktop()).list_works(),
   getWork: async (workId: string) => (await desktop()).get_work(workId),

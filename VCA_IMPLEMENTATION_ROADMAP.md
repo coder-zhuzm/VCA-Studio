@@ -960,12 +960,23 @@ Guide Singer 重唱路线验证
 ### P4 后置
 
 ```text
-模型站
-在线曲库
-完整安装器
-Mac 客户端
-云端推理 Provider
+[x] 模型站（链接/ZIP 下载 + 自动识别）
+在线曲库（版权风险，后置）
+完整安装器（后置）
+Mac 客户端（后置）
+云端推理 Provider（后置）
 ```
+
+### 阶段 7 进度确认（2026-07-08）
+
+模型站 MVP 已落地（路线图早期目标）：
+
+- `infrastructure/model_downloader.py`：支持 `http(s)` / `file` 链接下载，解包 zip 并自动识别 checkpoint / index / config / 浅扩散，推断框架（有 config.json → so-vits-svc，否则 rvc）。
+- `ModelService.import_model_from_url`：下载→解包→复制识别文件→登记模型→校验。
+- `bridge` 暴露 `import_model_from_url`；`Models` 页新增「从链接导入」面板。
+- 测试覆盖 file:// 压缩包导入与框架识别。
+
+说明：在线曲库（版权风险）、完整安装器、Mac 客户端、云端推理 Provider 按路线图后置，本轮未做。
 
 ---
 

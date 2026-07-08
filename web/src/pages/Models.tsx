@@ -13,6 +13,8 @@ export function Models() {
   const [form] = Form.useForm<ImportModelPayload>()
   const [models, setModels] = useState<ModelRecord[]>([])
   const [loading, setLoading] = useState(false)
+  const [url, setUrl] = useState('')
+  const [urlLoading, setUrlLoading] = useState(false)
   const framework = Form.useWatch('framework', form) ?? 'rvc'
 
   async function refresh() {
@@ -82,6 +84,22 @@ export function Models() {
     if (result.path) form.setFieldValue(field, result.path)
   }
 
+  async function importFromUrl(values: { url: string; name?: string }) {
+    setUrlLoading(true)
+    try {
+      const result = await api.importModelFromUrl(values)
+      if (!result.ok) {
+        message.error(result.error ?? '从链接导入失败')
+        return
+      }
+      setUrl('')
+      message.success('已从链接导入模型')
+      await refresh()
+    } finally {
+      setUrlLoading(false)
+    }
+  }
+
   useEffect(() => {
     form.setFieldValue('framework', 'rvc')
     void refresh()
@@ -127,6 +145,22 @@ export function Models() {
           )}
           <Button type="primary" htmlType="submit" loading={loading}>导入模型</Button>
         </Form>
+      </Card>
+
+      <Card title="从链接导入（模型站 MVP）">
+        <Typography.Paragraph type="secondary">
+          粘贴模型压缩包链接（http(s) 或本地 file 路径），下载后自动识别 .pth / .index / config.json / 浅扩散并登记。在线曲库与完整模型站后置。
+        </Typography.Paragraph>
+        <Space.Compact style={{ width: '100%' }}>
+          <Input
+            placeholder="https://example.com/model.zip"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+          />
+          <Button type="primary" loading={urlLoading} onClick={() => importFromUrl({ url, name: '' })}>
+            下载并导入
+          </Button>
+        </Space.Compact>
       </Card>
 
       <Card title="模型列表" extra={<Button onClick={refresh} loading={loading}>刷新</Button>}>
