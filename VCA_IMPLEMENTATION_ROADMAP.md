@@ -851,34 +851,59 @@ P0/P1 只支持：
 [x] RVC 模型导入
 [x] 三种输入模式
 [x] _prepare_stems（当前为输入复制；创建时可选 ffmpeg WAV 规范化，长期做自动检测并提示转换）
-[ ] UVR 分离
-[ ] RVC 推理
-[x] ffmpeg 最小混音（stems 模式 AI vocal + instrumental → final.wav）
+[x] UVR 分离
+[x] RVC 推理
+[x] ffmpeg 最小混音（song / stems 模式 AI vocal + instrumental → final.wav）
 [x] 作品库
 [x] 串行任务队列（start_work 入队，后台单 worker 执行）
 [x] 日志
 [x] WAV 导出（导出已有 output/final.wav；真实生成待推理/混音接入）
 ```
 
-### 当前 P0 进度确认（2026-07-07）
+### 当前 P0 进度确认（2026-07-08）
 
-已完成可追踪的管理闭环：Runtime 路径与深度检测、模型导入与目录操作、三种输入模式创建 work、输入文件准备、作品列表/详情/步骤/进度/日志、失败重试、删除、重命名、打开目录/日志、导出已有输出文件。
+已完成可追踪的管理闭环：Runtime 路径与深度检测、模型导入与目录操作、三种输入模式创建 work、输入文件准备、UVR 人声/伴奏分离（`song` 模式，带去混响与失败降级）、RVC 推理、有伴奏混音、作品列表/详情/步骤/进度/日志、失败重试、删除、重命名、打开目录/日志、导出已有输出文件。
 
-下一步最短路径：先接 `InferenceRunner` 的最小 RVC 调用；`song` 模式的 UVR 分离和有伴奏混音随后补齐。
+P0 单模型 RVC 翻唱闭环已跑通：`song` 完整歌曲 → UVR 分离 → RVC 推理 → 与伴奏混音；`vocals`/`stems` 已分离素材直推推理。下一步进入阶段 2：So-VITS-SVC 接入。
+
+### 阶段 2 进度确认（2026-07-08）
+
+已完成多框架推理引擎抽象：
+
+- `infrastructure/engine.py`：`InferenceEngine` 协议 + `EngineRegistry` 按 `framework` 路由。
+- `infrastructure/rvc_engine.py`：`RvcEngine`（原 `InferenceRunner` 的 RVC 逻辑下沉）。
+- `infrastructure/svc_engine.py`：`SvcEngine`，调用 So-VITS-SVC 仓库 `inference/infer_tool.py`，支持 transpose / f0_predictor / method / speaker / cluster_ratio / shallow_diffusion，输出文件自动发现。
+- `application/inference_runner.py`：改为按 `model.framework` 分发到对应引擎。
+- `work_service`：放开框架限制（RVC / So-VITS-SVC），运行时按框架校验 `rvc` / `svc` 组件；`_params` 扩展 SVC 参数。
+- `bridge`：装配 `EngineRegistry([RvcEngine, SvcEngine])`。
+
+说明：`SvcEngine` 的 CLI 参数面向 So-VITS-SVC 4.1 `infer_tool`，需在真实安装环境下验证；`model` 导入（`G_*.pth` + `config.json` + 可选浅扩散）此前已支持。
 
 ### P1 必做
 
 ```text
-So-VITS-SVC 接入
-LRC 导入
-Segment Timeline
-多模型选择
-每模型独立参数
-每模型整轨推理
-按片段裁切
-crossfade 拼接
-多模型成品输出
+[x] So-VITS-SVC 接入
+[x] LRC 导入
+[x] Segment Timeline
+[x] 多模型选择
+[x] 每模型独立参数
+[x] 每模型整轨推理
+[x] 按片段裁切
+[x] crossfade 拼接（片段边缘 fade + concat）
+[x] 多模型成品输出
 ```
+
+### 阶段 3 进度确认（2026-07-08）
+
+P1 多模型混唱 MVP 已落地：
+
+- `application/lrc_parser.py`：LRC → 时间排序片段。
+- `application/segment_builder.py`：片段归一化、默认模型分配、end 推断。
+- `application/stitch_service.py`：按片段从各模型 `renders/<id>/full.wav` 裁切、边缘 fade、concat 拼接；支持 `solo`/`choir`(等响度叠加)/`mute`(静音)/`original`(原声)。
+- `application/work_service.py`：`create_work` 接受 `models`（多模型+独立 params）与 `segments`；`_run_work` 逐模型整轨推理后拼接，再与伴奏混音；`_start_blocker` 校验所有指派模型与运行时。
+- `InferenceRunner.run_rvc` 支持按模型指定输出路径。
+
+说明：拼接采用片段边缘线性 fade + concat（非重叠 crossfade），已消除咔哒声；合唱为等响度 `amix`。前端 LRC/时间轴编辑 UI 与合唱增强留待阶段 4。
 
 ### P2 必做
 

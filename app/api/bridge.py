@@ -16,7 +16,11 @@ try:
     from application.runtime_service import RuntimeService
     from application.stem_preparer import StemPreparer
     from application.work_service import WorkService
+    from infrastructure.engine import EngineRegistry
+    from infrastructure.rvc_engine import RvcEngine
+    from infrastructure.svc_engine import SvcEngine
     from infrastructure.storage import ListRepository, SettingsStore
+    from infrastructure.uvr_tool import UvrTool
 except ModuleNotFoundError:
     app_dir = Path(__file__).resolve().parents[1]
     if str(app_dir) not in sys.path:
@@ -27,7 +31,11 @@ except ModuleNotFoundError:
     from application.runtime_service import RuntimeService
     from application.stem_preparer import StemPreparer
     from application.work_service import WorkService
+    from infrastructure.engine import EngineRegistry
+    from infrastructure.rvc_engine import RvcEngine
+    from infrastructure.svc_engine import SvcEngine
     from infrastructure.storage import ListRepository, SettingsStore
+    from infrastructure.uvr_tool import UvrTool
 
 
 class Api:
@@ -154,10 +162,19 @@ def build_api() -> Api:
     stem_preparer = StemPreparer(config.WORKS_DIR, ffmpeg_path)
     model_repo = ListRepository(config.MODELS_DB)
     runtime = RuntimeService(settings)
+    uvr_tool = UvrTool(settings.get("uvr_python", "") or "", settings.get("uvr_model_dir", "") or "")
+    registry = EngineRegistry([RvcEngine(settings), SvcEngine(settings)])
     return Api(
         settings,
         runtime,
         ModelService(model_repo, config.MODELS_DIR),
         stem_preparer,
-        WorkService(ListRepository(config.WORKS_DB), stem_preparer, model_repo, runtime, InferenceRunner(settings)),
+        WorkService(
+            ListRepository(config.WORKS_DB),
+            stem_preparer,
+            model_repo,
+            runtime,
+            InferenceRunner(settings, registry),
+            uvr_tool,
+        ),
     )

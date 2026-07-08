@@ -1,70 +1,33 @@
-"""Minimal RVC inference runner."""
+"""Multi-framework inference dispatcher.
+
+Picks the engine registered for a model's `framework` and runs it. Keeps the
+`run_rvc` method name so existing callers and tests stay compatible.
+"""
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from typing import Any
 
-import config
+from infrastructure.engine import EngineRegistry
 from infrastructure.storage import SettingsStore
 
 
 class InferenceRunner:
-    def __init__(self, settings: SettingsStore) -> None:
+    def __init__(self, settings: SettingsStore, registry: EngineRegistry) -> None:
         self._settings = settings
+        self._registry = registry
 
-    def run_rvc(self, work: dict[str, Any], model: dict[str, Any], vocals_path: str) -> dict[str, Any]:
+    def run_rvc(self, work: dict[str, Any], model: dict[str, Any], vocals_path: str, out_path: str | None = None) -> dict[str, Any]:
+        framework = str((model or {}).get("framework") or "rvc")
+        engine = self._registry.get(framework)
+        if not engine:
+            return {"ok": False, "error": f"未知推理框架: {framework}"}
+        if not engine.available():
+            return {"ok": False, "error": f"{framework} 推理环境未就绪。"}
+
         work_dir = Path(str(work.get("work_dir") or ""))
-        out_path = work_dir / "inference" / "ai_vocal.wav"
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-
-        command = self._command(model, vocals_path, out_path, work.get("params") or {})
-        log_path = Path(str(work.get("log_path") or work_dir / "run.log"))
-        try:
-            with log_path.open("a", encoding="utf-8") as log:
-                log.write("RVC command: " + " ".join(command) + "\n")
-                result = subprocess.run(
-                    command,
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    timeout=None,
-                    **config.subprocess_no_window(),
-                )
-        except (OSError, subprocess.SubprocessError) as exc:
-            return {"ok": False, "error": str(exc)}
-        if result.returncode != 0:
-            return {"ok": False, "error": f"RVC 推理失败，退出码 {result.returncode}"}
-        if not out_path.is_file():
-            return {"ok": False, "error": "RVC 推理未生成输出文件。"}
-        return {"ok": True, "path": str(out_path)}
-
-    def _command(self, model: dict[str, Any], vocals_path: str, out_path: Path, params: dict[str, Any]) -> list[str]:
-        files = model.get("files") or {}
-        command = [
-            str(Path(str(self._settings.get("rvc_python", ""))).expanduser()),
-            "-m",
-            "rvc_python",
-            "infer_file",
-            "--input_path",
-            vocals_path,
-            "--model_path",
-            str(files.get("checkpoint") or ""),
-            "--output_path",
-            str(out_path),
-            "--f0method",
-            str(params.get("f0_method") or "rmvpe"),
-            "--f0up_key",
-            str(params.get("transpose") or 0),
-            "--index_rate",
-            str(params.get("index_rate") or 0.75),
-            "--protect",
-            str(params.get("protect") or 0.33),
-        ]
-        index = str(files.get("index") or "")
-        if index:
-            command.extend(["--index_path", index])
-        return command
+        target = Path(out_path) if out_path else work_dir / "inference" / "ai_vocal.wav"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        log_path = str(work.get("log_path") or work_dir / "run.log")
+        return engine.infer(model, vocals_path, str(target), work.get("params") or {}, log_path)
