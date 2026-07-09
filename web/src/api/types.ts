@@ -205,6 +205,8 @@ export interface WorkParams {
   filter_radius: number
   device: string
   f0_predictor?: string
+  method?: string
+  speaker?: number
   cluster_ratio?: number
   shallow_diffusion?: boolean
   vocal_volume?: number

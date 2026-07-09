@@ -384,6 +384,51 @@ def test_registry() -> None:
         assert not failed["ok"]
 
 
+def test_svc_pipeline() -> None:
+    with tempfile.TemporaryDirectory() as root:
+        tmp = Path(root) / "svc"
+        tmp.mkdir(parents=True)
+        model_file = tmp / "G_0.pth"
+        config_file = tmp / "config.json"
+        vocal_file = tmp / "vocals.wav"
+        model_file.write_bytes(b"model")
+        config_file.write_text('{"train":{"log_interval":200}}')
+        vocal_file.write_bytes(b"audio")
+        model_repo = ListRepository(tmp / "models.json")
+        work_repo = ListRepository(tmp / "works.json")
+        model_repo.add({
+            "id": "svc1",
+            "framework": "so-vits-svc",
+            "files": {"checkpoint": str(model_file), "config": str(config_file)},
+        })
+        work = {
+            "id": "w1",
+            "model_id": "svc1",
+            "params": {"f0_predictor": "rmvpe", "cluster_ratio": 0},
+            "input_mode": "vocals",
+            "input_files": [{"role": "vocals", "stored_path": str(vocal_file)}],
+            "status": "pending",
+            "stage": "prepared",
+            "progress": 10,
+            "steps": [],
+            "logs": [],
+            "work_dir": str(tmp / "work_w1"),
+            "log_path": str(tmp / "work_w1" / "run.log"),
+        }
+        work_repo.add(work)
+        service = WorkService(
+            work_repo,
+            StemPreparer(tmp / "works", shutil.which("ffmpeg") or ""),
+            model_repo,
+            None,
+            FakeRunner(True),
+        )
+        service.start_work("w1")
+        done = wait_for(service, "w1", "done")
+        assert done["status"] == "done"
+        assert Path(done["output_files"]["final"]).is_file()
+
+
 if __name__ == "__main__":
     smoke()
     test_stitch()
@@ -391,3 +436,4 @@ if __name__ == "__main__":
     test_update_segments()
     test_pitch()
     test_registry()
+    test_svc_pipeline()

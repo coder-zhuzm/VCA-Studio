@@ -26,6 +26,14 @@ const MODE_LABEL: Record<WorkInputMode, string> = {
   stems: '已分离人声 + 伴奏',
 }
 
+const SVC_DEFAULT: Partial<WorkParams> = {
+  f0_predictor: 'rmvpe',
+  method: 'reconstruct',
+  speaker: 0,
+  cluster_ratio: 0,
+  shallow_diffusion: false,
+}
+
 const DEFAULT_PARAMS: WorkParams = {
   transpose: 0,
   f0_method: 'rmvpe',
@@ -37,7 +45,8 @@ const DEFAULT_PARAMS: WorkParams = {
   vocal_volume: 1,
   instrumental_volume: 0.85,
   skip_dereverb: false,
-}
+  ...SVC_DEFAULT,
+} as WorkParams
 
 type CreateFormValues = {
   name: string
@@ -91,9 +100,11 @@ export function Create() {
   useEffect(() => {
     api.getRuntimeStatus().then((status) => {
       const rvc = status.components.find((c) => c.key === 'rvc')
+      const svc = status.components.find((c) => c.key === 'svc')
       const ff = status.components.find((c) => c.key === 'ffmpeg')
       const hints: string[] = []
       if (rvc && rvc.status !== 'ready') hints.push(`RVC：${rvc.message}`)
+      if (svc && svc.status !== 'ready') hints.push(`So-VITS-SVC：${svc.message}`)
       if (ff && ff.status !== 'ready') hints.push(`ffmpeg：${ff.message}`)
       setRuntimeHint(hints.length ? hints.join('；') : undefined)
     }).catch(() => undefined)
@@ -162,6 +173,12 @@ export function Create() {
 
   const selectedModel = models.find((m) => m.id === (multiModel ? modelIds[0] : modelId))
   const isSvc = selectedModel?.framework === 'so-vits-svc'
+  const needsSvcRuntime = multiModel
+    ? modelIds.some((id) => models.find((m) => m.id === id)?.framework === 'so-vits-svc')
+    : isSvc
+  const needsRvcRuntime = multiModel
+    ? modelIds.some((id) => models.find((m) => m.id === id)?.framework === 'rvc')
+    : !isSvc
 
   async function chooseFile(field: 'song_path' | 'vocals_path' | 'instrumental_path') {
     const result = await api.chooseFile()
@@ -240,6 +257,8 @@ export function Create() {
       {runtimeHint ? (
         <Typography.Text type="warning">
           运行环境未就绪，翻唱可能无法完成：{runtimeHint}（<Link to="/runtime">去配置</Link>）
+          {needsSvcRuntime ? ' · 使用 SVC 模型需配置 svc_python + sovits_repo' : null}
+          {needsRvcRuntime ? ' · 使用 RVC 模型需配置 rvc_python' : null}
         </Typography.Text>
       ) : null}
       <Card title="新建翻唱">
@@ -335,7 +354,7 @@ export function Create() {
                 ) : null}
               </Card>
 
-              <Card size="small" title={multiModel ? '默认参数（新选模型继承）' : '常用参数'}>
+              <Card size="small" title={multiModel ? '默认参数（新选模型继承）' : isSvc ? 'So-VITS-SVC 参数' : 'RVC 参数'}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 12px' }}>
                   <Form.Item name={['params', 'transpose']} label="变调" rules={[{ required: true, message: '请输入变调值' }]}>
                     <InputNumber style={{ width: '100%' }} />
@@ -350,21 +369,51 @@ export function Create() {
                       ]}
                     />
                   </Form.Item>
-                  <Form.Item name={['params', 'f0_method']} label="F0 方法" rules={[{ required: true, message: '请选择 F0 方法' }]}>
-                    <Select options={[{ value: 'rmvpe', label: 'rmvpe' }, { value: 'harvest', label: 'harvest' }, { value: 'crepe', label: 'crepe' }]} />
-                  </Form.Item>
-                  <Form.Item name={['params', 'index_rate']} label="Index" rules={[{ required: true, message: '请输入 Index Rate' }]}>
-                    <InputNumber min={0} max={1} step={0.05} style={{ width: '100%' }} />
-                  </Form.Item>
+                  {isSvc ? (
+                    <>
+                      <Form.Item name={['params', 'f0_predictor']} label="F0 预测" rules={[{ required: true }]}>
+                        <Select options={[
+                          { value: 'rmvpe', label: 'rmvpe' },
+                          { value: 'pm', label: 'pm' },
+                          { value: 'dio', label: 'dio' },
+                          { value: 'harvest', label: 'harvest' },
+                          { value: 'crepe', label: 'crepe' },
+                        ]}
+                        />
+                      </Form.Item>
+                      <Form.Item name={['params', 'method']} label="推理方法">
+                        <Select options={[{ value: 'reconstruct', label: 'reconstruct' }, { value: 'cluster', label: 'cluster' }]} />
+                      </Form.Item>
+                      <Form.Item name={['params', 'speaker']} label="Speaker ID">
+                        <InputNumber min={0} step={1} style={{ width: '100%' }} />
+                      </Form.Item>
+                      <Form.Item name={['params', 'cluster_ratio']} label="Cluster 比例">
+                        <InputNumber min={0} max={1} step={0.05} style={{ width: '100%' }} />
+                      </Form.Item>
+                      <Form.Item name={['params', 'shallow_diffusion']} valuePropName="checked" style={{ gridColumn: '1 / -1' }}>
+                        <Checkbox>浅扩散（需模型含 diffusion 权重）</Checkbox>
+                      </Form.Item>
+                    </>
+                  ) : (
+                    <>
+                      <Form.Item name={['params', 'f0_method']} label="F0 方法" rules={[{ required: true, message: '请选择 F0 方法' }]}>
+                        <Select options={[{ value: 'rmvpe', label: 'rmvpe' }, { value: 'harvest', label: 'harvest' }, { value: 'crepe', label: 'crepe' }]} />
+                      </Form.Item>
+                      <Form.Item name={['params', 'index_rate']} label="Index" rules={[{ required: true, message: '请输入 Index Rate' }]}>
+                        <InputNumber min={0} max={1} step={0.05} style={{ width: '100%' }} />
+                      </Form.Item>
+                    </>
+                  )}
                 </div>
 
+                {!isSvc ? (
                 <Collapse
                   ghost
                   size="small"
                   items={[
                     {
                       key: 'advanced',
-                      label: '高级参数',
+                      label: 'RVC 高级参数',
                       children: (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 12px' }}>
                           <Form.Item name={['params', 'rms_mix_rate']} label="RMS" rules={[{ required: true }]}>
@@ -376,24 +425,12 @@ export function Create() {
                           <Form.Item name={['params', 'filter_radius']} label="Filter" rules={[{ required: true }]}>
                             <InputNumber min={0} step={1} style={{ width: '100%' }} />
                           </Form.Item>
-                          {isSvc ? (
-                            <>
-                              <Form.Item name={['params', 'f0_predictor']} label="F0 预测">
-                                <Select options={[{ value: 'rmvpe', label: 'rmvpe' }, { value: 'pm', label: 'pm' }, { value: 'dio', label: 'dio' }]} />
-                              </Form.Item>
-                              <Form.Item name={['params', 'cluster_ratio']} label="Cluster">
-                                <InputNumber min={0} max={1} step={0.05} style={{ width: '100%' }} />
-                              </Form.Item>
-                              <Form.Item name={['params', 'shallow_diffusion']} valuePropName="checked">
-                                <Checkbox>浅扩散</Checkbox>
-                              </Form.Item>
-                            </>
-                          ) : null}
                         </div>
                       ),
                     },
                   ]}
                 />
+                ) : null}
 
                 {multiModel && modelIds.length ? (
                   <Collapse
@@ -401,10 +438,33 @@ export function Create() {
                     size="small"
                     items={modelIds.map((id) => {
                       const model = models.find((m) => m.id === id)
+                      const svcModel = model?.framework === 'so-vits-svc'
                       return {
                         key: id,
-                        label: model?.name ?? id,
-                        children: (
+                        label: `${model?.name ?? id} (${model?.framework ?? '?'})`,
+                        children: svcModel ? (
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                            <span>变调</span>
+                            <InputNumber
+                              value={perModelParams[id]?.transpose ?? 0}
+                              onChange={(v) => setPerModelParams((p) => ({ ...p, [id]: { ...cloneParams(p[id]), transpose: Number(v ?? 0) } }))}
+                            />
+                            <span>F0 预测</span>
+                            <Select
+                              value={perModelParams[id]?.f0_predictor ?? 'rmvpe'}
+                              onChange={(v) => setPerModelParams((p) => ({ ...p, [id]: { ...cloneParams(p[id]), f0_predictor: v } }))}
+                              options={[{ value: 'rmvpe', label: 'rmvpe' }, { value: 'pm', label: 'pm' }]}
+                            />
+                            <span>Cluster</span>
+                            <InputNumber
+                              min={0}
+                              max={1}
+                              step={0.05}
+                              value={perModelParams[id]?.cluster_ratio ?? 0}
+                              onChange={(v) => setPerModelParams((p) => ({ ...p, [id]: { ...cloneParams(p[id]), cluster_ratio: Number(v ?? 0) } }))}
+                            />
+                          </div>
+                        ) : (
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                             <span>变调</span>
                             <InputNumber

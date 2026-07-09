@@ -44,6 +44,10 @@ class SvcEngine:
         repo = str(Path(str(self._settings.get("sovits_repo", "")).expanduser()))
         diffusion = str(files.get("diffusion") or "")
         shallow = bool(params.get("shallow_diffusion")) and bool(diffusion)
+        cluster_ratio = float(params.get("cluster_ratio") or 0)
+        method = str(params.get("method") or "reconstruct")
+        if cluster_ratio > 0 and method == "reconstruct":
+            method = "cluster"
 
         with tempfile.TemporaryDirectory() as out_dir:
             command = [
@@ -63,7 +67,7 @@ class SvcEngine:
                 "-f0p",
                 str(params.get("f0_predictor") or "rmvpe"),
                 "-meth",
-                str(params.get("method") or "reconstruct"),
+                method,
                 "-spk",
                 str(params.get("speaker") or 0),
                 "-shallow",
@@ -71,6 +75,8 @@ class SvcEngine:
                 "-diff",
                 str(bool(diffusion)).lower(),
             ]
+            if cluster_ratio > 0:
+                command.extend(["-cr", str(cluster_ratio)])
             if shallow and diffusion:
                 command.extend(["-dict", diffusion])
 

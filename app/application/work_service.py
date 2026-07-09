@@ -705,7 +705,7 @@ class WorkService:
         return updated
 
     def _mark_inference_start(self, work: dict[str, Any]) -> dict[str, Any]:
-        return self._mark_step(work, "run", "running", "RVC inference started", 60, "inferencing")
+        return self._mark_step(work, "run", "running", "推理开始", 60, "inferencing")
 
     def _mark_step(self, work: dict[str, Any], key: str, status: str, message: str, progress: int | None = None, stage: str | None = None) -> dict[str, Any]:
         now = _now()
