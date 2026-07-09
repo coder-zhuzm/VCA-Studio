@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 import sys
@@ -29,6 +28,14 @@ class RuntimeInstaller:
     def list_tasks(self) -> dict[str, Any]:
         profile = probe_host()
         tasks: list[dict[str, Any]] = []
+        if sys.platform == "darwin" and shutil.which("brew"):
+            tasks.append({
+                "id": "ffmpeg_brew",
+                "label": "安装 ffmpeg（Homebrew）",
+                "description": "执行 brew install ffmpeg，完成后自动尝试写入路径。",
+                "risk": "需要 Homebrew 与网络。",
+                "available": True,
+            })
         if sys.platform == "win32":
             tasks.append({
                 "id": "ffmpeg_winget",
@@ -44,7 +51,15 @@ class RuntimeInstaller:
             "risk": "无",
             "available": True,
         })
-        if profile.get("cuda_detected"):
+        if profile.get("platform") == "Darwin" and profile.get("machine") == "arm64":
+            tasks.append({
+                "id": "rvc_venv_mps",
+                "label": "创建 RVC 虚拟环境（Apple Silicon / MPS）",
+                "description": f"在 {self._runtime_root / 'rvc'} 创建 venv，安装 PyTorch（MPS）+ rvc_python。",
+                "risk": "下载体积大；首次推理可能较慢。",
+                "available": True,
+            })
+        elif profile.get("cuda_detected"):
             tasks.append({
                 "id": "rvc_venv_cuda",
                 "label": "创建 RVC 虚拟环境（CUDA PyTorch + rvc_python）",
@@ -53,10 +68,13 @@ class RuntimeInstaller:
                 "available": True,
             })
         else:
+            label = "创建 RVC 虚拟环境（CPU PyTorch + rvc_python）"
+            if profile.get("platform") == "Darwin":
+                label = "创建 RVC 虚拟环境（macOS CPU）"
             tasks.append({
                 "id": "rvc_venv_cpu",
-                "label": "创建 RVC 虚拟环境（CPU PyTorch + rvc_python）",
-                "description": f"在 {self._runtime_root / 'rvc'} 创建 venv（无 CUDA，较慢）。",
+                "label": label,
+                "description": f"在 {self._runtime_root / 'rvc'} 创建 venv（无 CUDA）。",
                 "risk": "下载体积大。",
                 "available": True,
             })
@@ -76,12 +94,16 @@ class RuntimeInstaller:
         if task_id == "ffmpeg_path_hint":
             return self._apply_ffmpeg_from_path()
 
+        if task_id == "ffmpeg_brew":
+            return self._start_job(task_id, self._install_ffmpeg_brew)
+
         if task_id == "ffmpeg_winget":
             return self._start_job(task_id, self._install_ffmpeg_winget)
 
-        if task_id in ("rvc_venv_cuda", "rvc_venv_cpu"):
+        if task_id in ("rvc_venv_cuda", "rvc_venv_cpu", "rvc_venv_mps"):
             use_cuda = task_id == "rvc_venv_cuda"
-            return self._start_job(task_id, lambda: self._bootstrap_rvc_venv(use_cuda))
+            check_mps = task_id == "rvc_venv_mps"
+            return self._start_job(task_id, lambda: self._bootstrap_rvc_venv(use_cuda, check_mps))
 
         return {"ok": False, "error": f"未知任务: {task_id}"}
 
@@ -120,6 +142,38 @@ class RuntimeInstaller:
         self._settings.update({"ffmpeg_path": ff, "ffprobe_path": fp or ff.replace("ffmpeg", "ffprobe")})
         return {"ok": True, "message": f"已写入 ffmpeg: {ff}"}
 
+    def _install_ffmpeg_brew(self) -> dict[str, Any]:
+        if not shutil.which("brew"):
+            return {"ok": False, "error": "未找到 brew。"}
+        self._log("=== brew install ffmpeg ===")
+        proc = subprocess.run(
+            ["brew", "install", "ffmpeg"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=900,
+            **config.subprocess_no_window(),
+        )
+        self._log(proc.stdout or "")
+        self._log(proc.stderr or "")
+        if proc.returncode != 0:
+            return {"ok": False, "error": f"brew 退出码 {proc.returncode}，详见 runtime_install.log"}
+        applied = self._apply_ffmpeg_from_path()
+        if not applied.get("ok"):
+            brew_ff = Path("/opt/homebrew/bin/ffmpeg")
+            intel_ff = Path("/usr/local/bin/ffmpeg")
+            for candidate in (brew_ff, intel_ff):
+                if candidate.is_file():
+                    fp = candidate.parent / "ffprobe"
+                    self._settings.update({
+                        "ffmpeg_path": str(candidate),
+                        "ffprobe_path": str(fp) if fp.is_file() else str(candidate),
+                    })
+                    return {"ok": True, "message": f"已写入 ffmpeg: {candidate}"}
+            return {"ok": True, "message": "brew 已执行，请新开终端后点「仅检测 ffmpeg」。"}
+        return {"ok": True, "message": applied.get("message")}
+
     def _install_ffmpeg_winget(self) -> dict[str, Any]:
         if not shutil.which("winget"):
             return {"ok": False, "error": "未找到 winget。"}
@@ -142,7 +196,7 @@ class RuntimeInstaller:
             return {"ok": True, "message": "winget 已执行，但未自动发现 ffmpeg，请重启终端或手动填写路径。"}
         return {"ok": True, "message": applied.get("message")}
 
-    def _bootstrap_rvc_venv(self, use_cuda: bool) -> dict[str, Any]:
+    def _bootstrap_rvc_venv(self, use_cuda: bool, check_mps: bool = False) -> dict[str, Any]:
         root = self._runtime_root / "rvc"
         if root.exists():
             shutil.rmtree(root, ignore_errors=True)
@@ -189,18 +243,28 @@ class RuntimeInstaller:
         if not vpy.is_file():
             return {"ok": False, "error": "venv 创建失败"}
         self._settings.set("rvc_python", str(vpy))
+        if check_mps:
+            verify_script = (
+                "import torch; import rvc_python; "
+                "print('mps', getattr(torch.backends, 'mps', None) and torch.backends.mps.is_available())"
+            )
+        elif use_cuda:
+            verify_script = "import torch; import rvc_python; print('cuda', torch.cuda.is_available())"
+        else:
+            verify_script = "import torch; import rvc_python; print('ok', True)"
         verify = subprocess.run(
-            [str(vpy), "-c", "import torch; import rvc_python; print(torch.cuda.is_available())"],
+            [str(vpy), "-c", verify_script],
             capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=60,
+            timeout=120,
             **config.subprocess_no_window(),
         )
         self._log(verify.stdout or verify.stderr or "")
-        cuda_ok = "True" in (verify.stdout or "")
         msg = f"RVC 环境已写入 rvc_python={vpy}"
-        if use_cuda and not cuda_ok:
-            msg += "（警告：torch.cuda.is_available() 为 False，请检查驱动/CUDA 轮子）"
-        return {"ok": True, "message": msg, "rvc_python": str(vpy), "cuda_available": cuda_ok}
+        if use_cuda and "cuda True" not in (verify.stdout or "").replace(",", " "):
+            msg += "（警告：CUDA 不可用，请检查驱动）"
+        if check_mps and "mps True" not in (verify.stdout or ""):
+            msg += "（警告：MPS 不可用，新建翻唱请改设备为 cpu）"
+        return {"ok": True, "message": msg, "rvc_python": str(vpy)}

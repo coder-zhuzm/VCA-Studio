@@ -48,7 +48,11 @@ def probe_host() -> dict[str, Any]:
     notes: list[str] = []
     if system == "Darwin":
         recommended_device = "mps" if machine == "arm64" else "cpu"
-        notes.append("macOS 无 NVIDIA CUDA，推理请用 cpu 或 mps（Apple Silicon）。")
+        if machine == "arm64":
+            notes.append("Apple Silicon：推理设备建议 mps；需 PyTorch 支持 MPS。")
+        else:
+            notes.append("Intel Mac：无 CUDA，推理请用 cpu。")
+        notes.append("macOS 无 NVIDIA CUDA；ffmpeg 可用 Homebrew 安装。")
     elif system == "Windows" and cuda_available:
         recommended_device = "cuda"
         notes.append("检测到 NVIDIA GPU，翻唱参数设备建议选 cuda。")

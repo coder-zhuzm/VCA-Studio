@@ -174,8 +174,8 @@ export function Runtime() {
         extra={<Button onClick={refresh} loading={loading}>刷新</Button>}
       >
         <Typography.Paragraph type="secondary">
-          先在本机跑通翻唱：Windows + NVIDIA（如 RTX 2060 SUPER）建议安装 ffmpeg → RVC 虚拟环境（CUDA）→ 手动导入模型 → 新建翻唱设备选 cuda。
-          UVR / SVC 仍建议手动配置路径。
+          先在本机跑通翻唱：Windows + NVIDIA 建议 ffmpeg → RVC（CUDA）；macOS（Apple Silicon）建议 ffmpeg（brew）→ RVC（MPS），新建翻唱设备选 mps。
+          Intel Mac 用 CPU。UVR / SVC 仍手动配置路径。
         </Typography.Paragraph>
         {installJob ? (
           <Typography.Paragraph>
