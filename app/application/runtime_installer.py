@@ -61,6 +61,10 @@ class RuntimeInstaller:
     def _ffmpeg_ready(self) -> bool:
         return self._resolve_ffmpeg_paths() is not None
 
+    def _rvc_ready(self) -> bool:
+        status = self._runtime.check_component("rvc")
+        return status.get("status") == "ready"
+
     def detect_ffmpeg(self) -> dict[str, Any]:
         """Bind ffmpeg/ffprobe into settings and return runtime check snapshot."""
         resolved = self._resolve_ffmpeg_paths()
@@ -87,6 +91,7 @@ class RuntimeInstaller:
         profile = probe_host()
         tasks: list[dict[str, Any]] = []
         ffmpeg_ok = self._ffmpeg_ready()
+        rvc_ready = self._rvc_ready()
         if sys.platform == "darwin" and shutil.which("brew"):
             tasks.append({
                 "id": "ffmpeg_brew",
@@ -116,7 +121,7 @@ class RuntimeInstaller:
                 "label": "创建 RVC 虚拟环境（Apple Silicon / MPS）",
                 "description": f"在 {self._runtime_root / 'rvc'} 创建 venv，安装 PyTorch（MPS）+ rvc_python。",
                 "risk": "下载体积大；首次推理可能较慢。",
-                "available": True,
+                "available": not rvc_ready,
             })
         elif profile.get("cuda_detected"):
             tasks.append({
@@ -124,7 +129,7 @@ class RuntimeInstaller:
                 "label": "创建 RVC 虚拟环境（CUDA PyTorch + rvc_python）",
                 "description": f"在 {self._runtime_root / 'rvc'} 创建 venv 并 pip 安装（约 5–15 分钟，需网络）。适配 {profile.get('gpu_name') or 'NVIDIA GPU'}。",
                 "risk": "下载体积大；失败请查看 runtime_install.log。",
-                "available": True,
+                "available": (not rvc_ready) and bool(profile.get("cuda_detected")),
             })
         else:
             label = "创建 RVC 虚拟环境（CPU PyTorch + rvc_python）"
@@ -135,7 +140,7 @@ class RuntimeInstaller:
                 "label": label,
                 "description": f"在 {self._runtime_root / 'rvc'} 创建 venv（无 CUDA）。",
                 "risk": "下载体积大。",
-                "available": True,
+                "available": (not rvc_ready) and not profile.get("cuda_detected"),
             })
         return {"ok": True, "profile": profile, "tasks": tasks}
 
