@@ -58,8 +58,29 @@ def test_run_task_rejects_second_while_running() -> None:
         assert "进行中" in str(result.get("error") or "")
 
 
+def test_rvc_venv_cuda_available_tracks_rvc_ready() -> None:
+    with tempfile.TemporaryDirectory() as root:
+        inst = _installer(Path(root))
+        profile = {
+            "ok": True, "platform": "Windows", "machine": "AMD64",
+            "gpu_name": "RTX 2060 SUPER", "cuda_detected": True,
+            "recommended_device": "cuda", "notes": [],
+        }
+        with patch("application.runtime_installer.probe_host", return_value=profile), \
+             patch.object(inst._runtime, "check_component", return_value={"status": "ready"}):
+            tasks = {t["id"]: t for t in inst.list_tasks()["tasks"]}
+            if "rvc_venv_cuda" in tasks:
+                assert tasks["rvc_venv_cuda"]["available"] is False
+        with patch("application.runtime_installer.probe_host", return_value=profile), \
+             patch.object(inst._runtime, "check_component", return_value={"status": "missing"}):
+            tasks = {t["id"]: t for t in inst.list_tasks()["tasks"]}
+            assert "rvc_venv_cuda" in tasks
+            assert tasks["rvc_venv_cuda"]["available"] is True
+
+
 if __name__ == "__main__":
     test_resolve_prefers_configured_path()
     test_list_tasks_disables_winget_when_ffmpeg_ready()
     test_run_task_rejects_second_while_running()
+    test_rvc_venv_cuda_available_tracks_rvc_ready()
     print("ok")
