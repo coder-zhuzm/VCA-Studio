@@ -60,19 +60,22 @@ def test_run_task_rejects_second_while_running() -> None:
 
 def test_rvc_venv_cuda_available_tracks_rvc_ready() -> None:
     with tempfile.TemporaryDirectory() as root:
-        inst = _installer(Path(root))
+        tmp = Path(root)
+        inst = _installer(tmp)
         profile = {
             "ok": True, "platform": "Windows", "machine": "AMD64",
             "gpu_name": "RTX 2060 SUPER", "cuda_detected": True,
             "recommended_device": "cuda", "notes": [],
         }
-        with patch("application.runtime_installer.probe_host", return_value=profile), \
-             patch.object(inst._runtime, "check_component", return_value={"status": "ready"}):
+        rvc_py = tmp / "python.exe"
+        rvc_py.write_text("x")
+        inst._settings.set("rvc_python", str(rvc_py))
+        with patch("application.runtime_installer.probe_host", return_value=profile):
             tasks = {t["id"]: t for t in inst.list_tasks()["tasks"]}
             if "rvc_venv_cuda" in tasks:
                 assert tasks["rvc_venv_cuda"]["available"] is False
-        with patch("application.runtime_installer.probe_host", return_value=profile), \
-             patch.object(inst._runtime, "check_component", return_value={"status": "missing"}):
+        inst._settings.set("rvc_python", "")
+        with patch("application.runtime_installer.probe_host", return_value=profile):
             tasks = {t["id"]: t for t in inst.list_tasks()["tasks"]}
             assert "rvc_venv_cuda" in tasks
             assert tasks["rvc_venv_cuda"]["available"] is True

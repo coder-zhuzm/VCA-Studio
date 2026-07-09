@@ -94,14 +94,18 @@ export function Runtime() {
       message: rvcStatus?.message ?? '未检测',
       primaryTaskId: taskById.rvc_venv_cuda?.available
         ? 'rvc_venv_cuda'
-        : taskById.rvc_venv_cpu?.available
-          ? 'rvc_venv_cpu'
-          : '',
+        : taskById.rvc_venv_mps?.available
+          ? 'rvc_venv_mps'
+          : taskById.rvc_venv_cpu?.available
+            ? 'rvc_venv_cpu'
+            : '',
       primaryLabel: taskById.rvc_venv_cuda?.available
         ? '安装 RVC（CUDA）'
-        : taskById.rvc_venv_cpu?.available
-          ? '安装 RVC（CPU）'
-          : '已就绪或请手填路径',
+        : taskById.rvc_venv_mps?.available
+          ? '安装 RVC（MPS）'
+          : taskById.rvc_venv_cpu?.available
+            ? '安装 RVC（CPU）'
+            : '已就绪或请手填路径',
     },
   ]
 

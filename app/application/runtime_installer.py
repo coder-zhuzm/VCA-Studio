@@ -43,6 +43,8 @@ class RuntimeInstaller:
         candidates: list[Path] = []
         for raw in (
             shutil.which("ffmpeg"),
+            r"C:\ffmpeg\bin\ffmpeg.exe",
+            r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
             "/opt/homebrew/bin/ffmpeg",
             "/usr/local/bin/ffmpeg",
         ):
@@ -62,8 +64,9 @@ class RuntimeInstaller:
         return self._resolve_ffmpeg_paths() is not None
 
     def _rvc_ready(self) -> bool:
-        status = self._runtime.check_component("rvc")
-        return status.get("status") == "ready"
+        """Cheap gate for install-task availability (not full RuntimeService ready)."""
+        value = str(self._settings.get("rvc_python", "") or "").strip()
+        return bool(value and Path(value).expanduser().is_file())
 
     def detect_ffmpeg(self) -> dict[str, Any]:
         """Bind ffmpeg/ffprobe into settings and return runtime check snapshot."""
@@ -72,8 +75,9 @@ class RuntimeInstaller:
             return {
                 "ok": False,
                 "error": (
-                    "未找到 ffmpeg。请先点「安装 ffmpeg（Homebrew）」或 brew install ffmpeg，"
-                    "或在下方路径区手动填写 ffmpeg_path（混音与输入规范化必需）。"
+                    "未找到 ffmpeg。Windows 可点「安装 ffmpeg（winget）」或手动填写 ffmpeg_path；"
+                    "macOS 可用 brew install ffmpeg / 检测并绑定；"
+                    "混音与输入规范化必需。"
                 ),
             }
         ff, fp = resolved
