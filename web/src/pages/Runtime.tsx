@@ -225,6 +225,16 @@ export function Runtime() {
     }
   }
 
+  function copyLogToClipboard() {
+    if (navigator.clipboard && installLog) {
+      navigator.clipboard.writeText(installLog)
+        .then(() => message.success('日志已复制到剪贴板'))
+        .catch(() => message.error('复制失败，请手动选择复制'))
+    } else {
+      message.warning('当前环境不支持自动复制，请在下方文本框手动选中复制')
+    }
+  }
+
   async function applyRecommendedDevice() {
     if (!profile?.recommended_device) return
     await api.setSetting('default_inference_device', profile.recommended_device)
@@ -349,15 +359,23 @@ export function Runtime() {
             },
           ]}
         />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>日志（显示最后 40 行）：</Typography.Text>
+          <Button size="small" onClick={copyLogToClipboard} disabled={!installLog}>复制完整日志</Button>
+        </div>
         <pre
           style={{
-            marginTop: 12,
+            marginTop: 8,
             maxHeight: installJob?.status === 'running' ? 280 : 200,
             overflow: 'auto',
             fontSize: 11,
             background: '#fafafa',
             padding: 8,
             border: installJob?.status === 'running' ? '1px solid #d9d9d9' : undefined,
+            userSelect: 'text',
+            WebkitUserSelect: 'text',
+            msUserSelect: 'text',
+            pointerEvents: 'auto',
           }}
         >
           {(installLog || (installJob?.status === 'running' ? '（日志刷新中…）' : ''))

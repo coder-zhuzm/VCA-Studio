@@ -311,7 +311,7 @@ class RuntimeInstaller:
             pip = root / "bin" / "pip"
 
         pip_steps = [
-            (["install", "-U", "pip", "wheel"], "升级 pip", 18),
+            (["install", "-U", "pip<24.1", "wheel"], "升级 pip", 18),
             (
                 ["install", "torch", "torchvision", "torchaudio", "--index-url", "https://download.pytorch.org/whl/cu121"]
                 if use_cuda
@@ -319,7 +319,12 @@ class RuntimeInstaller:
                 "安装 PyTorch",
                 45,
             ),
-            (["install", "rvc-python"], "安装 rvc-python", 78),
+            (["install", "numpy>=1.26.0"], "安装 NumPy 兼容版", 65),
+            (["install", "--no-dependencies", "rvc-python"], "下载 rvc-python", 75),
+            (["install", "python-multipart", "requests", "soundfile", "torchcrepe", "uvicorn", "pyworld"], "安装核心依赖", 80),
+            (["install", "--no-build-isolation", "fairseq==0.12.2"], "编译 fairseq", 88),
+            (["install", "fastapi", "pydantic", "praat-parselmouth"], "安装辅助依赖", 90),
+            (["install", "setuptools<70.0.0"], "修补 setuptools 兼容性", 95),
         ]
 
         def run_pip_stream(args: list[str], label: str, progress: int) -> None:
