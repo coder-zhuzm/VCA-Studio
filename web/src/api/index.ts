@@ -10,6 +10,7 @@ import type {
   RuntimeComponentResult,
   Analysis,
   RuntimeComponentStatus,
+  RuntimeInstallRunResult,
   RuntimeStatus,
   Segment,
   SetRuntimePathResult,
@@ -95,7 +96,10 @@ const mock = {
   async list_runtime_install_tasks() {
     return { ok: true, profile: await mock.get_host_profile(), tasks: [] }
   },
-  async run_runtime_install_task() {
+  async run_runtime_install_task(taskId: string): Promise<RuntimeInstallRunResult> {
+    if (taskId === 'ffmpeg_path_hint') {
+      return { ok: false, error: '浏览器 mock：请用桌面应用检测 ffmpeg。' }
+    }
     return { ok: false, error: '浏览器 mock 不支持安装。' }
   },
   async get_runtime_install_status() {

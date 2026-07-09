@@ -56,6 +56,14 @@ export interface HostProfile {
   notes: string[]
 }
 
+export interface RuntimeInstallRunResult {
+  ok: boolean
+  error?: string
+  message?: string
+  components?: RuntimeComponentStatus[]
+  paths?: Record<string, string>
+}
+
 export interface RuntimeInstallTask {
   id: string
   label: string
@@ -272,7 +280,7 @@ export interface DesktopApi {
   get_runtime_status: () => Promise<RuntimeStatus>
   get_host_profile: () => Promise<HostProfile>
   list_runtime_install_tasks: () => Promise<{ ok: boolean; profile: HostProfile; tasks: RuntimeInstallTask[] }>
-  run_runtime_install_task: (taskId: string) => Promise<{ ok: boolean; error?: string; message?: string }>
+  run_runtime_install_task: (taskId: string) => Promise<RuntimeInstallRunResult>
   get_runtime_install_status: () => Promise<{ ok: boolean; job: RuntimeInstallJob | null; log_path?: string }>
   read_runtime_install_log: () => Promise<{ ok: boolean; content?: string; error?: string }>
   check_runtime_component: (key: string) => Promise<RuntimeComponentResult>

@@ -130,6 +130,9 @@ class Api:
     def run_runtime_install_task(self, task_id: str) -> dict[str, Any]:
         return self._installer.run_task(task_id)
 
+    def detect_ffmpeg(self) -> dict[str, Any]:
+        return self._installer.detect_ffmpeg()
+
     def get_runtime_install_status(self) -> dict[str, Any]:
         return self._installer.install_status()
 
@@ -222,7 +225,7 @@ def build_api() -> Api:
     stem_preparer = StemPreparer(config.WORKS_DIR, ffmpeg_path)
     model_repo = ListRepository(config.MODELS_DB)
     runtime = RuntimeService(settings)
-    installer = RuntimeInstaller(settings)
+    installer = RuntimeInstaller(settings, runtime)
     uvr_tool = UvrTool(settings.get("uvr_python", "") or "", settings.get("uvr_model_dir", "") or "")
     registry = EngineRegistry([RvcEngine(settings), SvcEngine(settings)])
     return Api(

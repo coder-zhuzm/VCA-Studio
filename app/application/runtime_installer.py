@@ -11,12 +11,14 @@ from typing import Any
 
 import config
 from application.host_probe import probe_host
+from application.runtime_service import RuntimeService
 from infrastructure.storage import SettingsStore
 
 
 class RuntimeInstaller:
-    def __init__(self, settings: SettingsStore) -> None:
+    def __init__(self, settings: SettingsStore, runtime: RuntimeService) -> None:
         self._settings = settings
+        self._runtime = runtime
         self._runtime_root = config.DATA_DIR / "runtime"
         self._log_path = config.DATA_DIR / "runtime_install.log"
         self._lock = threading.Lock()
@@ -25,18 +27,61 @@ class RuntimeInstaller:
     def host_profile(self) -> dict[str, Any]:
         return probe_host()
 
-    def _ffmpeg_ready(self) -> bool:
+    def _resolve_ffmpeg_paths(self) -> tuple[str, str] | None:
         configured = str(self._settings.get("ffmpeg_path", "") or "").strip()
-        if configured and Path(configured).expanduser().is_file():
-            return True
-        for candidate in (
+        if configured:
+            p = Path(configured).expanduser()
+            if p.is_file():
+                fp = str(self._settings.get("ffprobe_path", "") or "").strip()
+                if fp and Path(fp).expanduser().is_file():
+                    return str(p), fp
+                sibling = p.parent / "ffprobe"
+                if sibling.is_file():
+                    return str(p), str(sibling)
+                return str(p), str(p)
+
+        candidates: list[Path] = []
+        for raw in (
             shutil.which("ffmpeg"),
             "/opt/homebrew/bin/ffmpeg",
             "/usr/local/bin/ffmpeg",
         ):
-            if candidate and Path(candidate).is_file():
-                return True
-        return False
+            if raw:
+                candidates.append(Path(raw).expanduser())
+        seen: set[str] = set()
+        for path in candidates:
+            key = str(path)
+            if key in seen or not path.is_file():
+                continue
+            seen.add(key)
+            probe = path.parent / "ffprobe"
+            return str(path), str(probe) if probe.is_file() else str(path)
+        return None
+
+    def _ffmpeg_ready(self) -> bool:
+        return self._resolve_ffmpeg_paths() is not None
+
+    def detect_ffmpeg(self) -> dict[str, Any]:
+        """Bind ffmpeg/ffprobe into settings and return runtime check snapshot."""
+        resolved = self._resolve_ffmpeg_paths()
+        if not resolved:
+            return {
+                "ok": False,
+                "error": (
+                    "未找到 ffmpeg。请先点「安装 ffmpeg（Homebrew）」或 brew install ffmpeg，"
+                    "或在下方路径区手动填写 ffmpeg_path（混音与输入规范化必需）。"
+                ),
+            }
+        ff, fp = resolved
+        self._settings.update({"ffmpeg_path": ff, "ffprobe_path": fp})
+        snap = self._runtime.status()
+        return {
+            "ok": True,
+            "message": f"已绑定 ffmpeg：{ff}",
+            "ffmpeg_path": ff,
+            "ffprobe_path": fp,
+            **snap,
+        }
 
     def list_tasks(self) -> dict[str, Any]:
         profile = probe_host()
@@ -60,8 +105,8 @@ class RuntimeInstaller:
             })
         tasks.append({
             "id": "ffmpeg_path_hint",
-            "label": "仅检测 ffmpeg",
-            "description": "不安装，只把 PATH 中的 ffmpeg/ffprobe 写入配置（若已手动安装）。",
+            "label": "检测并绑定 ffmpeg",
+            "description": "必需：混音、输入 WAV 规范化、试听都依赖 ffmpeg。从 PATH 或 Homebrew 路径写入配置。",
             "risk": "无",
             "available": True,
         })
@@ -106,7 +151,7 @@ class RuntimeInstaller:
                 return {"ok": False, "error": "已有安装任务进行中，请稍候。"}
 
         if task_id == "ffmpeg_path_hint":
-            return self._apply_ffmpeg_from_path()
+            return self.detect_ffmpeg()
 
         if task_id == "ffmpeg_brew":
             return self._start_job(task_id, self._install_ffmpeg_brew)
@@ -158,24 +203,13 @@ class RuntimeInstaller:
             f.write(line.rstrip() + "\n")
 
     def _ensure_ffmpeg_paths(self) -> None:
-        if self._ffmpeg_ready():
-            return
-        for candidate in (Path("/opt/homebrew/bin/ffmpeg"), Path("/usr/local/bin/ffmpeg")):
-            if candidate.is_file():
-                fp = candidate.parent / "ffprobe"
-                self._settings.update({
-                    "ffmpeg_path": str(candidate),
-                    "ffprobe_path": str(fp) if fp.is_file() else str(candidate),
-                })
-                return
+        resolved = self._resolve_ffmpeg_paths()
+        if resolved:
+            ff, fp = resolved
+            self._settings.update({"ffmpeg_path": ff, "ffprobe_path": fp})
 
     def _apply_ffmpeg_from_path(self) -> dict[str, Any]:
-        ff = shutil.which("ffmpeg") or ""
-        fp = shutil.which("ffprobe") or ""
-        if not ff:
-            return {"ok": False, "error": "PATH 中未找到 ffmpeg，请先安装或手动填写路径。"}
-        self._settings.update({"ffmpeg_path": ff, "ffprobe_path": fp or ff.replace("ffmpeg", "ffprobe")})
-        return {"ok": True, "message": f"已写入 ffmpeg: {ff}"}
+        return self.detect_ffmpeg()
 
     def _run_process_stream(self, command: list[str], label: str, timeout: int = 900) -> int:
         self._patch_job(f"{label}…", 15)
@@ -209,6 +243,9 @@ class RuntimeInstaller:
         if code != 0:
             return {"ok": False, "error": f"brew 退出码 {code}，详见 runtime_install.log"}
         self._ensure_ffmpeg_paths()
+        bound = self.detect_ffmpeg()
+        if bound.get("ok"):
+            return {"ok": True, "message": bound.get("message")}
         applied = self._apply_ffmpeg_from_path()
         if not applied.get("ok"):
             brew_ff = Path("/opt/homebrew/bin/ffmpeg")

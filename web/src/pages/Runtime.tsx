@@ -153,15 +153,31 @@ export function Runtime() {
   }
 
   async function runInstall(taskId: string) {
+    if (taskId === 'ffmpeg_path_hint') {
+      setInstallingId(taskId)
+      try {
+        const result = await api.runRuntimeInstallTask(taskId)
+        if (!result.ok) {
+          message.error(result.error ?? '未找到 ffmpeg，请先 Homebrew 安装或手动填写路径')
+          return
+        }
+        if (result.components && result.paths) {
+          setStatus({ components: result.components, paths: result.paths })
+          form.setFieldsValue(result.paths)
+        } else {
+          await refresh()
+        }
+        message.success(result.message ?? 'ffmpeg 已绑定')
+      } finally {
+        setInstallingId(undefined)
+      }
+      return
+    }
+
     try {
       const result = await api.runRuntimeInstallTask(taskId)
       if (!result.ok) {
         message.error(result.error ?? '无法启动')
-        return
-      }
-      if (taskId === 'ffmpeg_path_hint') {
-        message.success('message' in result && result.message ? result.message : '完成')
-        await refresh()
         return
       }
       message.info('message' in result && result.message ? result.message : '已开始')
@@ -264,7 +280,7 @@ export function Runtime() {
                   loading={installingId === row.id}
                   onClick={() => runInstall(row.id)}
                 >
-                  {row.available ? '安装' : '已完成'}
+                  {row.id === 'ffmpeg_path_hint' ? '检测' : row.available ? '安装' : '已完成'}
                 </Button>
               ),
             },
