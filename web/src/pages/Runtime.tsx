@@ -363,37 +363,6 @@ export function Runtime() {
         </pre>
       </Card>
 
-      <Card title="高级：手动路径" size="small">
-        <Collapse
-          items={[{
-            key: 'paths',
-            label: '已有自建环境时展开填写',
-            children: (
-              <>
-                <Form form={form} layout="vertical">
-                  {PATH_FIELDS.map(([key, label]) => (
-                    <Form.Item key={key} name={key} label={label}>
-                      <Input
-                        allowClear
-                        disabled={installBusy}
-                        addonAfter={
-                          <Button type="link" size="small" disabled={installBusy} onClick={() => choosePath(key)}>
-                            选择
-                          </Button>
-                        }
-                      />
-                    </Form.Item>
-                  ))}
-                </Form>
-                <Button type="primary" onClick={save} loading={loading} disabled={installBusy}>
-                  保存并检测
-                </Button>
-              </>
-            ),
-          }]}
-        />
-      </Card>
-
       <Card title="组件状态">
         <Table<RuntimeComponentStatus>
           rowKey="key"
@@ -429,6 +398,37 @@ export function Runtime() {
               ),
             },
           ]}
+        />
+      </Card>
+
+      <Card title="高级：手动路径" size="small">
+        <Collapse
+          items={[{
+            key: 'paths',
+            label: '已有自建环境时展开填写',
+            children: (
+              <>
+                <Form form={form} layout="vertical">
+                  {PATH_FIELDS.map(([key, label]) => (
+                    <Form.Item key={key} name={key} label={label}>
+                      <Input
+                        allowClear
+                        disabled={installBusy}
+                        addonAfter={
+                          <Button type="link" size="small" disabled={installBusy} onClick={() => choosePath(key)}>
+                            选择
+                          </Button>
+                        }
+                      />
+                    </Form.Item>
+                  ))}
+                </Form>
+                <Button type="primary" onClick={save} loading={loading} disabled={installBusy}>
+                  保存并检测
+                </Button>
+              </>
+            ),
+          }]}
         />
       </Card>
     </Space>
