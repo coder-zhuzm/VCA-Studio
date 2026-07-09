@@ -1,5 +1,5 @@
-import { Button, Card, Descriptions, Form, Input, Space, Table, Tag, Typography, message } from 'antd'
-import { useEffect, useState } from 'react'
+import { Button, Card, Descriptions, Form, Input, Progress, Space, Table, Tag, Typography, message } from 'antd'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import type {
   HostProfile,
@@ -37,6 +37,40 @@ export function Runtime() {
   const [loading, setLoading] = useState(false)
   const [checkingKey, setCheckingKey] = useState<string>()
   const [installingId, setInstallingId] = useState<string>()
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  function stopPoll() {
+    if (pollRef.current) {
+      window.clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+  }
+
+  async function pollInstallOnce() {
+    const [st, log] = await Promise.all([api.getRuntimeInstallStatus(), api.readRuntimeInstallLog()])
+    if (st.ok) setInstallJob(st.job ?? null)
+    if (log.ok) setInstallLog(log.content ?? '')
+    return st.ok ? st.job : null
+  }
+
+  function startInstallPoll(taskId: string) {
+    stopPoll()
+    setInstallJob({ id: taskId, status: 'running', message: '正在启动…', progress: 0 })
+    setInstallingId(taskId)
+    void pollInstallOnce()
+    pollRef.current = window.setInterval(async () => {
+      const job = await pollInstallOnce()
+      if (job && job.status !== 'running') {
+        stopPoll()
+        setInstallingId(undefined)
+        await refresh()
+        if (job.status === 'done') message.success(job.message)
+        else message.error(job.message)
+      }
+    }, 800)
+  }
+
+  const installBusy = Boolean(installingId) || installJob?.status === 'running'
 
   async function refresh() {
     setLoading(true)
@@ -51,7 +85,23 @@ export function Runtime() {
       setProfile(prof)
       if (taskPack.ok) setTasks(taskPack.tasks ?? [])
       const inst = await api.getRuntimeInstallStatus()
-      if (inst.ok) setInstallJob(inst.job ?? null)
+      if (inst.ok) {
+        setInstallJob(inst.job ?? null)
+        if (inst.job?.status === 'running' && !pollRef.current) {
+          setInstallingId(inst.job.id)
+          stopPoll()
+          pollRef.current = window.setInterval(async () => {
+            const job = await pollInstallOnce()
+            if (job && job.status !== 'running') {
+              stopPoll()
+              setInstallingId(undefined)
+              await refresh()
+              if (job.status === 'done') message.success(job.message)
+              else message.error(job.message)
+            }
+          }, 800)
+        }
+      }
       const log = await api.readRuntimeInstallLog()
       if (log.ok) setInstallLog(log.content ?? '')
     } finally {
@@ -103,36 +153,22 @@ export function Runtime() {
   }
 
   async function runInstall(taskId: string) {
-    setInstallingId(taskId)
     try {
       const result = await api.runRuntimeInstallTask(taskId)
       if (!result.ok) {
         message.error(result.error ?? '无法启动')
         return
       }
-      message.info('message' in result && result.message ? result.message : '已开始')
       if (taskId === 'ffmpeg_path_hint') {
+        message.success('message' in result && result.message ? result.message : '完成')
         await refresh()
-        setInstallingId(undefined)
         return
       }
-      const poll = window.setInterval(async () => {
-        const st = await api.getRuntimeInstallStatus()
-        if (st.ok) {
-          setInstallJob(st.job ?? null)
-          if (st.job && st.job.status !== 'running') {
-            window.clearInterval(poll)
-            setInstallingId(undefined)
-            const log = await api.readRuntimeInstallLog()
-            if (log.ok) setInstallLog(log.content ?? '')
-            await refresh()
-            if (st.job.status === 'done') message.success(st.job.message)
-            else message.error(st.job.message)
-          }
-        }
-      }, 2000)
-    } finally {
-      if (!installJob) setInstallingId(undefined)
+      message.info('message' in result && result.message ? result.message : '已开始')
+      startInstallPoll(taskId)
+    } catch {
+      stopPoll()
+      setInstallingId(undefined)
     }
   }
 
@@ -144,12 +180,13 @@ export function Runtime() {
 
   useEffect(() => {
     void refresh()
+    return () => stopPoll()
   }, [])
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {profile ? (
-        <Card title="本机环境" size="small" extra={<Button size="small" onClick={() => applyRecommendedDevice()}>记住推荐推理设备</Button>}>
+        <Card title="本机环境" size="small" extra={<Button size="small" disabled={installBusy} onClick={() => applyRecommendedDevice()}>记住推荐推理设备</Button>}>
           <Descriptions column={2} size="small">
             <Descriptions.Item label="系统">{profile.platform} / {profile.machine}</Descriptions.Item>
             <Descriptions.Item label="GPU">{profile.gpu_name || '（无 NVIDIA 或未检测到）'}</Descriptions.Item>
@@ -171,17 +208,41 @@ export function Runtime() {
 
       <Card
         title="可选安装（用户确认后执行）"
-        extra={<Button onClick={refresh} loading={loading}>刷新</Button>}
+        extra={<Button onClick={refresh} loading={loading} disabled={installBusy}>刷新</Button>}
       >
+        {installBusy ? (
+          <Typography.Text type="warning" style={{ display: 'block', marginBottom: 8 }}>
+            安装进行中：已禁用其它安装与路径保存，请等待完成。
+          </Typography.Text>
+        ) : null}
+        {status?.components.find((c) => c.key === 'ffmpeg')?.status === 'ready' ? (
+          <Typography.Text type="success" style={{ display: 'block', marginBottom: 8 }}>
+            ffmpeg 已就绪，无需重复安装 Homebrew/winget 项。
+          </Typography.Text>
+        ) : null}
         <Typography.Paragraph type="secondary">
           先在本机跑通翻唱：Windows + NVIDIA 建议 ffmpeg → RVC（CUDA）；macOS（Apple Silicon）建议 ffmpeg（brew）→ RVC（MPS），新建翻唱设备选 mps。
           Intel Mac 用 CPU。UVR / SVC 仍手动配置路径。
         </Typography.Paragraph>
         {installJob ? (
-          <Typography.Paragraph>
-            安装任务：<Tag>{installJob.id}</Tag> <Tag color={installJob.status === 'done' ? 'green' : installJob.status === 'failed' ? 'red' : 'processing'}>{installJob.status}</Tag>
-            {installJob.message}
-          </Typography.Paragraph>
+          <Card size="small" type="inner" title="安装进度" style={{ marginBottom: 16 }}>
+            <Space direction="vertical" style={{ width: '100%' }} size="small">
+              <Space wrap>
+                <Tag>{installJob.id}</Tag>
+                <Tag color={installJob.status === 'done' ? 'green' : installJob.status === 'failed' ? 'red' : 'processing'}>
+                  {installJob.status}
+                </Tag>
+              </Space>
+              <Progress
+                percent={installJob.status === 'running' ? (installJob.progress ?? 5) : 100}
+                status={installJob.status === 'failed' ? 'exception' : installJob.status === 'done' ? 'success' : 'active'}
+                strokeColor={installJob.status === 'running' ? { from: '#1677ff', to: '#69b1ff' } : undefined}
+              />
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {installJob.message || '等待后端输出…'}
+              </Typography.Text>
+            </Space>
+          </Card>
         ) : null}
         <Table<RuntimeInstallTask>
           rowKey="id"
@@ -199,34 +260,56 @@ export function Runtime() {
                 <Button
                   size="small"
                   type="primary"
-                  disabled={!row.available || Boolean(installingId)}
+                  disabled={!row.available || installBusy}
                   loading={installingId === row.id}
                   onClick={() => runInstall(row.id)}
                 >
-                  安装
+                  {row.available ? '安装' : '已完成'}
                 </Button>
               ),
             },
           ]}
         />
-        {installLog ? (
-          <pre style={{ marginTop: 12, maxHeight: 200, overflow: 'auto', fontSize: 12, background: '#fafafa', padding: 8 }}>{installLog}</pre>
-        ) : null}
+        <pre
+          style={{
+            marginTop: 12,
+            maxHeight: installJob?.status === 'running' ? 280 : 200,
+            overflow: 'auto',
+            fontSize: 11,
+            background: '#fafafa',
+            padding: 8,
+            border: installJob?.status === 'running' ? '1px solid #d9d9d9' : undefined,
+          }}
+        >
+          {(installLog || (installJob?.status === 'running' ? '（日志刷新中…）' : ''))
+            .split('\n')
+            .slice(-40)
+            .join('\n')}
+        </pre>
       </Card>
 
       <Card
         title="运行环境路径"
         extra={
           <Space>
-            <Button onClick={refresh} loading={loading}>刷新状态</Button>
-            <Button type="primary" onClick={save} loading={loading}>保存并检测</Button>
+            <Button onClick={refresh} loading={loading} disabled={installBusy}>刷新状态</Button>
+            <Button type="primary" onClick={save} loading={loading} disabled={installBusy}>保存并检测</Button>
           </Space>
         }
       >
         <Form form={form} layout="vertical">
           {PATH_FIELDS.map(([key, label]) => (
             <Form.Item key={key} name={key} label={label}>
-              <Input placeholder="留空则使用 PATH 或显示未配置" allowClear addonAfter={<Button type="link" size="small" onClick={() => choosePath(key)}>选择</Button>} />
+              <Input
+                placeholder="留空则使用 PATH 或显示未配置"
+                allowClear
+                disabled={installBusy}
+                addonAfter={
+                  <Button type="link" size="small" disabled={installBusy} onClick={() => choosePath(key)}>
+                    选择
+                  </Button>
+                }
+              />
             </Form.Item>
           ))}
         </Form>
@@ -260,7 +343,11 @@ export function Runtime() {
             },
             {
               title: '操作',
-              render: (_, row) => <Button size="small" loading={checkingKey === row.key} onClick={() => checkOne(row.key)}>重测</Button>,
+              render: (_, row) => (
+                <Button size="small" disabled={installBusy} loading={checkingKey === row.key} onClick={() => checkOne(row.key)}>
+                  重测
+                </Button>
+              ),
             },
           ]}
         />
