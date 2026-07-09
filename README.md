@@ -1,49 +1,47 @@
 # VCA-Studio
 
-VCA-Studio 是开发中的桌面级 AI 翻唱工作台。当前目标是先跑通 P0 单模型 RVC 翻唱闭环，再扩展多模型混唱、时间轴和音频编辑器。
+VCA-Studio 是桌面级 **AI 翻唱编排工作台**：单模型翻唱、多模型混唱、片段时间轴、局部重渲染与原唱解析 MVP 已接入后端；详细阶段说明见 [VCA_IMPLEMENTATION_ROADMAP.md](./VCA_IMPLEMENTATION_ROADMAP.md)。
 
-## 当前进度
+## 当前进度（2026-07-09）
 
-已完成 **桌面基础壳 + Runtime Manager + ModelService + WorkService P0 管理流**。
+**后端**：P0 单模型闭环、So-VITS-SVC 双引擎、P1 多模型整轨推理 + 拼接、合唱/limiter、`rerender_work`（缺缓存时按片段指派补推理）、UVR 分离（可降级）、模型链接/ZIP 导入、音高解析与歌词对齐 API 均已落地。
 
-- ✅ React + Vite + TypeScript 前端骨架
-- ✅ Ant Design 基础布局
-- ✅ pywebview 桌面壳
-- ✅ 前后端 bridge：`window.pywebview.api.*`
-- ✅ 浏览器开发环境 mock fallback
-- ✅ JSON 本地存储：`settings.json` / `models.json` / `works.json`
-- ✅ Windows / macOS / Linux 用户数据目录基础适配
-- ✅ 生产模式加载 `web/dist/index.html`
-- ✅ `/runtime` 运行环境页面：路径保存、深度检测、单组件重测
-- ✅ ffmpeg / ffprobe 执行检测
-- ✅ SVC / RVC / UVR Python import 检测
-- ✅ UVR 模型目录与模型文件检测
-- ✅ pywebview 文件 / 目录选择器
-- ✅ `/models` 本地模型管理：导入、检查、删除、默认模型、打开目录
-- ✅ RVC / So-VITS-SVC 模型文件复制到数据目录
-- ✅ `/create` 新建作品：三种输入模式、模型选择、RVC 参数、文件选择
-- ✅ `StemPreparer`：`song` / `vocals` / `stems` 输入复制；新建作品时可选转 44100Hz WAV
-- ✅ `/works` 作品库：列表、详情、日志、步骤、进度、重命名、删除、重试、导出、打开目录/日志
-- ✅ work 目录写入 `work.json` 和 `run.log`
-- ✅ 首页显示最近作品和数据目录入口
+**前端**：Runtime / 模型 / 新建翻唱（单模型）/ 作品库 / 时间轴编辑（`/editor/:id`）/ 原唱解析面板 / 从链接导入模型。
 
-当前还不能执行真实 AI 翻唱：RVC/SVC 推理、UVR 分离、混音仍未接入。`start_work` 会做前置校验，随后以“真实 RVC 推理尚未接入”失败收口。
+**需在真机配置 Runtime 后验收**：RVC、SVC、UVR、ffmpeg 路径正确时，`start_work` 会走分离 → 推理 → 混音并写出 `output/final.wav`。
+
+### 已实现能力摘要
+
+- ✅ React + Vite + TypeScript + Ant Design + pywebview + bridge + mock fallback
+- ✅ JSON 存储、`/runtime` 深度检测（ffmpeg / SVC / RVC / UVR）
+- ✅ `/models` 本地导入 + **从 http(s)/file 链接或 ZIP 导入**
+- ✅ `/create` 三种输入模式、RVC 参数、可选输入 WAV 规范化
+- ✅ `/works` 列表、详情、步骤、进度、日志、重试、导出、打开目录
+- ✅ 后台**串行任务队列**执行 `start_work`
+- ✅ `/editor/:id` 片段表编辑、保存时间轴、局部/整轨重渲染、原唱解析
+- ✅ 多模型 + `segments`：**API/`create_work` 已支持**；创建页 UI 仍以单模型为主
+
+### 已知缺口（产品层）
+
+- `/create` 未提供 LRC 导入与多模型编排 UI（可手工调 API 或后续补 UI）
+- `/works` 无自动轮询进度，需手动刷新；应用内成品/干声试听未做
+- 侧栏「时间轴编辑」指向 `/editor`，有效入口为作品库「编辑」→ `/editor/:id`
+- 完整多轨波形编辑器、在线曲库、ModelScope 全站、自动安装器、Guide Singer 仍后置
 
 ## 已有页面
 
 | 路由 | 状态 | 说明 |
 |---|---|---|
 | `/` | 已实现 | 应用状态、数据目录、最近作品 |
-| `/runtime` | 已实现 | runtime 路径保存、深度检测、单组件重测 |
-| `/models` | 已实现 | 本地 RVC / So-VITS-SVC 模型导入与管理 |
-| `/create` | 已实现 P0 表单 | 创建 work 记录，准备输入文件 |
-| `/works` | 已实现管理流 | 作品列表、详情、日志、重试、导出、删除 |
+| `/runtime` | 已实现 | 路径保存、深度检测、单组件重测 |
+| `/models` | 已实现 | 本地导入、检查、链接导入 |
+| `/create` | 已实现 | 创建 work；单模型表单 |
+| `/works` | 已实现 | 作品库与管理流 |
+| `/editor/:id` | 已实现 | 时间轴编辑、重渲染、原唱解析 |
 
 ## 本地启动
 
 ### 1. 准备环境
-
-需要先安装：
 
 - Python 3.10+
 - Node.js 20.19+
@@ -67,9 +65,7 @@ python main.py
 
 ### 4. 开发模式启动
 
-开发模式需要两个终端。
-
-终端 1：启动 Vite：
+终端 1：
 
 ```powershell
 cd web
@@ -77,7 +73,7 @@ npm install
 npm run dev
 ```
 
-终端 2：启动 pywebview：
+终端 2：
 
 ```powershell
 cd app
@@ -85,154 +81,55 @@ pip install pywebview
 python main.py --dev
 ```
 
-开发模式下桌面壳会加载：
+开发模式桌面壳加载 `http://localhost:5173?desktop=1`；浏览器直连 `http://localhost:5173` 使用 mock API。
 
-```text
-http://localhost:5173?desktop=1
-```
+## Runtime Manager
 
-普通浏览器直接打开 `http://localhost:5173` 时会使用 mock API。
-
-## Runtime Manager 当前能力
-
-`/runtime` 页面用于接入用户已有的本地 AI 运行环境。当前只做 **手动路径 + 检测**，不自动安装。
-
-### 可配置路径
+`/runtime` 为**手动路径 + 检测**，不自动安装完整 AI runtime。
 
 | Key | 说明 |
 |---|---|
-| `ffmpeg_path` | ffmpeg 可执行文件路径；留空时尝试 PATH |
-| `ffprobe_path` | ffprobe 可执行文件路径；留空时尝试 PATH |
-| `svc_python` | So-VITS-SVC 推理环境 Python |
-| `sovits_repo` | so-vits-svc 仓库目录 |
-| `rvc_python` | RVC 推理环境 Python |
-| `uvr_python` | UVR 分离环境 Python |
-| `uvr_model_dir` | UVR 模型目录 |
+| `ffmpeg_path` / `ffprobe_path` | 留空则尝试 PATH |
+| `svc_python` / `sovits_repo` | So-VITS-SVC |
+| `rvc_python` | RVC |
+| `uvr_python` / `uvr_model_dir` | UVR 分离 |
 
-### 检测规则
+## 作品流水线（`start_work`）
 
-| 组件 | 当前检测 |
+| 模式 | 行为 |
 |---|---|
-| ffmpeg | 路径存在，并能执行 `ffmpeg -version` |
-| ffprobe | 路径存在，并能执行 `ffprobe -version` |
-| SVC | `svc_python` 存在；`torch` / `librosa` / `fairseq` 可 import；`sovits_repo/inference/infer_tool.py` 存在 |
-| RVC | `rvc_python` 存在；`torch` / `rvc_python` 可 import |
-| UVR | `uvr_python` 存在；`audio_separator` 可 import；UVR 模型目录和默认模型文件存在 |
+| `song` | UVR 分离（失败可降级为人声=原曲）→ 推理 → 有伴奏则混音 |
+| `vocals` / `stems` | 使用已准备人声 → 推理；`stems` 可与伴奏混音 |
+| 含 `segments` | 各模型整轨推理 → 裁切拼接（含 choir/mute/original）→ 混音 |
 
-当前不做：自动安装 runtime、整合包扫描、CUDA/GPU 深度检测、模型下载。
-
-## 模型管理当前能力
-
-`/models` 页面支持本地导入 RVC 与 So-VITS-SVC 模型。导入时会把模型文件复制到数据目录，后续流程不依赖原始外部路径。
-
-| Framework | 必填 | 可选 |
-|---|---|---|
-| RVC | `.pth` | `.index` |
-| So-VITS-SVC | `.pth`, `config.json` | diffusion `.pt`, diffusion config `.yaml/.yml` |
-
-已支持：文件选择器、导入、检查、删除、设置默认、打开模型目录。
-
-## WorkService 当前能力
-
-`/create` 创建 work 后会：
-
-1. 校验模型存在
-2. 复制输入文件到 `works/<work_id>/input/`
-3. 勾选“导入时转换为 44100Hz WAV”且配置 ffmpeg 时，转成 44100Hz WAV；否则原样复制
-4. 写入 `works.json`
-5. 写入 `works/<work_id>/work.json`
-6. 写入 `works/<work_id>/run.log`
-
-支持输入类型：
-
-| 模式 | 输入 | 当前行为 |
-|---|---|---|
-| `song` | 完整歌曲 | 准备输入；真实 UVR 分离未接入 |
-| `vocals` | 已分离人声 | 准备输入；可进入 RVC 前置校验 |
-| `stems` | 已分离人声 + 伴奏 | 准备输入；RVC 后用 ffmpeg 最小混音 |
-
-作品库已支持：列表、最近作品、状态、进度、步骤、日志、重命名、失败重试、删除、打开目录、打开日志、导出已有 `output/final.wav`。
+作品目录见路线图：`.vca_studio/works/<id>/`（`input/`、`stems/`、`renders/`、`inference/`、`output/`、`run.log`）。
 
 ## 技术结构
 
 ```text
 VCA-Studio/
-├─ app/                         # Python 桌面壳 + bridge + 本地服务
-│  ├─ api/bridge.py             # pywebview JS API
-│  ├─ application/model_service.py
-│  ├─ application/runtime_service.py
-│  ├─ application/stem_preparer.py
-│  ├─ application/work_service.py
-│  ├─ infrastructure/storage.py # JSON storage
-│  ├─ config.py                 # 应用信息、路径、数据目录
-│  └─ main.py                   # pywebview 入口
-├─ web/                         # React + Vite 前端
-│  └─ src/
-│     ├─ api/                   # bridge wrapper + 类型
-│     ├─ pages/                 # P0 页面
-│     ├─ App.tsx
-│     └─ main.tsx
-├─ docs/superpowers/            # 设计与实施计划
+├─ app/
+│  ├─ api/bridge.py
+│  ├─ application/          # work, model, runtime, lrc, stitch, stem_preparer, …
+│  ├─ infrastructure/       # rvc/svc engine, uvr, pitch, model_downloader, …
+│  └─ main.py
+├─ web/src/pages/           # Home, Runtime, Models, Create, Works, Editor
 ├─ VCA_IMPLEMENTATION_ROADMAP.md
-├─ PROJECT_COPY_REPORT.md
-├─ README.md
-└─ LICENSE
+├─ PROJECT_COPY_REPORT.md   # 参考项目对齐清单（§10 已与 2026-07-09 代码同步）
+└─ README.md
 ```
 
 ## 本地数据目录
 
-支持 `VCA_DATA_DIR` 环境变量覆盖。
+环境变量 `VCA_DATA_DIR` 可覆盖默认路径（Windows `%APPDATA%/VCA-Studio/.vca_studio` 等）。
 
-默认路径：
+## 后续优先（对齐路线图）
 
-| 平台 | 默认路径 |
-|---|---|
-| Windows | `%APPDATA%/VCA-Studio/.vca_studio` |
-| macOS | `~/Library/Application Support/VCA-Studio/.vca_studio` |
-| Linux | `$XDG_DATA_HOME/VCA-Studio/.vca_studio` 或 `~/.local/share/VCA-Studio/.vca_studio` |
-
-当前会写入：
-
-```text
-settings.json
-models.json
-models/
-works.json
-works/<work_id>/input/
-works/<work_id>/run.log
-works/<work_id>/work.json
-```
-
-## P0 剩余任务
-
-1. **UVR 分离**：`song` 模式接入真实人声 / 伴奏分离
-2. **InferenceRunner**：真实调用 RVC；SVC 推理后置到 P1/P2
-3. **MixService**：有伴奏则混音，无伴奏输出 AI 干声（当前已内联最小 ffmpeg 混音，后续再抽服务）
-4. **串行任务队列**：后台执行，避免阻塞 UI（当前已接最小单 worker）
-5. **试听**：成品 / AI 干声 / 伴奏预览
-6. **导出增强**：真实输出生成后导出 WAV；MP3 后置
-
-## P0 暂不做
-
-- 在线曲库
-- ModelScope 模型站
-- 多模型混唱
-- 音频编辑器
-- 自动安装完整 AI runtime
-- Mac 安装包 / Windows 安装器
+1. Create：LRC + 多模型 UI  
+2. Works：运行中轮询 + 试听  
+3. 真机全链路验收（RVC/SVC/UVR）  
+4. Guide Singer、波形多轨编辑器、在线曲库（后置）
 
 ## 参考项目
 
-本项目功能规划参考：
-
-- [SDIJF1521/xb-svcb](https://github.com/SDIJF1521/xb-svcb)
-
-VCA-Studio 会复用其产品经验和部分架构思路，例如 Python + pywebview、本地 JSON 存储、ffmpeg、UVR、RVC/SVC 子环境、作品库与任务队列。
-
-首版刻意保持小范围：先实现核心翻唱闭环，再扩展多模型、编辑器和生态能力。
-
-## 开源协议
-
-本仓库使用 MIT License，详见 [LICENSE](./LICENSE)。
-
-参考项目 `xb-svcb` 的源码、模型、依赖和第三方服务可能有各自协议与限制。使用、复刻或分发相关能力时，请同时遵守原项目和对应依赖的许可证要求。
+功能规划参考 [SDIJF1521/xb-svcb](https://github.com/SDIJF1521/xb-svcb)。本仓库 MIT，使用第三方模型与 runtime 请遵守各自许可。

@@ -2,7 +2,7 @@
 
 > 本文是对 `PROJECT_COPY_REPORT.md` 的补充，不替代原文档。  
 > 目标：在保留原规划的基础上，明确 VCA-Studio 的阶段实现顺序，避免一开始复刻完整 XB-SVCB，优先跑通 AI 翻唱核心闭环，并将“多模型混唱”作为后续差异化核心。  
-> 更新时间：2026-07-06
+> 更新时间：2026-07-09（§11 进度与代码审计同步）
 
 ---
 
@@ -857,7 +857,7 @@ P0/P1 只支持：
 [x] 作品库
 [x] 串行任务队列（start_work 入队，后台单 worker 执行）
 [x] 日志
-[x] WAV 导出（导出已有 output/final.wav；真实生成待推理/混音接入）
+[x] WAV 导出（推理/混音成功后导出 output/final.wav）
 ```
 
 ### 当前 P0 进度确认（2026-07-08）
@@ -903,7 +903,7 @@ P1 多模型混唱 MVP 已落地：
 - `application/work_service.py`：`create_work` 接受 `models`（多模型+独立 params）与 `segments`；`_run_work` 逐模型整轨推理后拼接，再与伴奏混音；`_start_blocker` 校验所有指派模型与运行时。
 - `InferenceRunner.run_rvc` 支持按模型指定输出路径。
 
-说明：拼接采用片段边缘线性 fade + concat（非重叠 crossfade），已消除咔哒声；合唱为等响度 `amix`。前端 LRC/时间轴编辑 UI 与合唱增强留待阶段 4。
+说明：拼接采用片段边缘线性 fade + concat（非重叠 crossfade），已消除咔哒声；合唱为等响度 `amix`。创建页尚未提供 LRC/多模型 UI；时间轴与合唱在 Editor 与 API 侧可用。
 
 ### P2 必做
 
@@ -924,7 +924,7 @@ P1 多模型混唱 MVP 已落地：
 - `WorkService.rerender_work`：对带时间轴的作品，基于 `renders/<id>/full.wav` 已有渲染直接重拼接（跳过推理），支持时间轴编辑后的局部重渲染；缺渲染缓存或无时间轴时给出明确错误。
 - `bridge` 暴露 `rerender_work`。
 
-说明：时间轴拖拽、拆分/合并/删除为前端对 `segments` 的编辑操作，后端已支持任意片段结构，无需改动；前端 UI 尚未实现。
+说明：时间轴编辑 UI 已在 `Editor.tsx` 落地（表格式片段编辑、拆分/合并/删除）；波形轨拖拽为后续增强。`rerender_work` 在 2026-07-09 起支持缺 `renders/<id>/full.wav` 时按片段指派自动补推理再拼接。
 
 ### 阶段 5：Audio Editor Lite（2026-07-08）
 
@@ -952,9 +952,9 @@ P1 多模型混唱 MVP 已落地：
 ### P3 必做
 
 ```text
-Audio Editor Lite
-Vocal to MIDI & Lyrics 初版
-Guide Singer 重唱路线验证
+[x] Audio Editor Lite（片段表 MVP，非完整多轨波形）
+[x] Vocal to MIDI & Lyrics 初版（自相关音高 + naive 歌词对齐）
+[ ] Guide Singer 重唱路线验证
 ```
 
 ### P4 后置
@@ -977,6 +977,20 @@ Mac 客户端（后置）
 - 测试覆盖 file:// 压缩包导入与框架识别。
 
 说明：在线曲库（版权风险）、完整安装器、Mac 客户端、云端推理 Provider 按路线图后置，本轮未做。
+
+### 当前缺口确认（2026-07-09）
+
+相对路线图「桌面级编排工作台」定位，代码已覆盖阶段 0–7 的 **MVP 后端** 与 **部分前端**；产品层仍建议优先补齐：
+
+```text
+/create：LRC 导入 + 多模型编排 UI（后端 create_work 已支持 models + segments）
+/works：运行中自动轮询 + 应用内试听（final / ai_vocal）
+导航：侧栏 /editor 无 id，应从作品库进入 /editor/:id
+真机：RVC / SVC / UVR 全链路在目标 Windows 环境验收
+P3.6：Guide Singer；完整 waveform 多轨编辑器；在线曲库 / ModelScope 全站
+```
+
+`PROJECT_COPY_REPORT.md` §10 勾选已与本次审计对齐；以本文 §11 阶段说明为实施顺序权威来源。
 
 ---
 
