@@ -15,6 +15,7 @@ import {
   message,
 } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import type { CreateWorkPayload, ModelRecord, WorkInputMode, WorkModelEntry, WorkParams, WorkRecord } from '../api/types'
 import { lrcToSegments } from '../utils/lrc'
@@ -33,6 +34,9 @@ const DEFAULT_PARAMS: WorkParams = {
   protect: 0.33,
   filter_radius: 3,
   device: 'auto',
+  vocal_volume: 1,
+  instrumental_volume: 0.85,
+  skip_dereverb: false,
 }
 
 type CreateFormValues = {
@@ -47,6 +51,7 @@ type CreateFormValues = {
   multi_model?: boolean
   model_ids?: string[]
   lrc_text?: string
+  auto_start?: boolean
 }
 
 function fileTitle(path = '') {
@@ -58,6 +63,7 @@ function cloneParams(p?: WorkParams): WorkParams {
 }
 
 export function Create() {
+  const navigate = useNavigate()
   const [form] = Form.useForm<CreateFormValues>()
   const [models, setModels] = useState<ModelRecord[]>([])
   const [loading, setLoading] = useState(false)
@@ -70,6 +76,7 @@ export function Create() {
   const multiModel = Form.useWatch('multi_model', form)
   const modelIds = Form.useWatch('model_ids', form) ?? []
   const lrcText = Form.useWatch('lrc_text', form) ?? ''
+  const autoStart = Form.useWatch('auto_start', form) ?? true
   const [nameTouched, setNameTouched] = useState(false)
   const submitText = mode === 'vocals' ? '开始生成干声' : '开始生成翻唱'
 
@@ -79,7 +86,20 @@ export function Create() {
     return lrcToSegments(lrcText, primary)
   }, [lrcText, modelId, modelIds, multiModel])
 
-  async function createWork(values: CreateFormValues) {
+  const [runtimeHint, setRuntimeHint] = useState<string>()
+
+  useEffect(() => {
+    api.getRuntimeStatus().then((status) => {
+      const rvc = status.components.find((c) => c.key === 'rvc')
+      const ff = status.components.find((c) => c.key === 'ffmpeg')
+      const hints: string[] = []
+      if (rvc && rvc.status !== 'ready') hints.push(`RVC：${rvc.message}`)
+      if (ff && ff.status !== 'ready') hints.push(`ffmpeg：${ff.message}`)
+      setRuntimeHint(hints.length ? hints.join('；') : undefined)
+    }).catch(() => undefined)
+  }, [])
+
+  async function submitPipeline(values: CreateFormValues, autoStart: boolean) {
     const baseParams = cloneParams(values.params)
     let payload: CreateWorkPayload = {
       name: values.name,
@@ -119,11 +139,29 @@ export function Create() {
         return
       }
       setCreatedWork(result.work)
+      if (autoStart) {
+        const started = await api.startWork(result.work.id)
+        if (!started.ok || !started.work) {
+          message.error(started.error ?? '启动失败')
+          return
+        }
+        if (started.work.status === 'failed') {
+          message.warning(started.work.logs.at(-1)?.message ?? '运行失败，请到作品库查看日志')
+          navigate('/works')
+          return
+        }
+        message.success('已开始翻唱，请到作品库查看进度')
+        navigate('/works')
+        return
+      }
       message.success('作品已创建，请到作品库点击「开始」运行')
     } finally {
       setLoading(false)
     }
   }
+
+  const selectedModel = models.find((m) => m.id === (multiModel ? modelIds[0] : modelId))
+  const isSvc = selectedModel?.framework === 'so-vits-svc'
 
   async function chooseFile(field: 'song_path' | 'vocals_path' | 'instrumental_path') {
     const result = await api.chooseFile()
@@ -199,14 +237,20 @@ export function Create() {
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      {runtimeHint ? (
+        <Typography.Text type="warning">
+          运行环境未就绪，翻唱可能无法完成：{runtimeHint}（<Link to="/runtime">去配置</Link>）
+        </Typography.Text>
+      ) : null}
       <Card title="新建翻唱">
         <Form
           form={form}
           layout="vertical"
-          onFinish={createWork}
+          onFinish={(values) => submitPipeline(values, Boolean(values.auto_start))}
           initialValues={{
             mode: 'song',
             multi_model: false,
+            auto_start: true,
             params: { ...DEFAULT_PARAMS },
           }}
         >
@@ -238,6 +282,21 @@ export function Create() {
               <Form.Item name="normalize_input" valuePropName="checked">
                 <Checkbox>导入时转换为 44100Hz WAV</Checkbox>
               </Form.Item>
+              {mode === 'song' ? (
+                <Form.Item name={['params', 'skip_dereverb']} valuePropName="checked">
+                  <Checkbox>跳过去混响（已处理过的人声可勾选）</Checkbox>
+                </Form.Item>
+              ) : null}
+              {mode === 'stems' || mode === 'song' ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <Form.Item name={['params', 'vocal_volume']} label="人声音量">
+                    <InputNumber min={0} max={2} step={0.05} style={{ width: '100%' }} />
+                  </Form.Item>
+                  <Form.Item name={['params', 'instrumental_volume']} label="伴奏音量">
+                    <InputNumber min={0} max={2} step={0.05} style={{ width: '100%' }} />
+                  </Form.Item>
+                </div>
+              ) : null}
             </Card>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(320px, 420px)', gap: 24, alignItems: 'start' }}>
@@ -317,6 +376,19 @@ export function Create() {
                           <Form.Item name={['params', 'filter_radius']} label="Filter" rules={[{ required: true }]}>
                             <InputNumber min={0} step={1} style={{ width: '100%' }} />
                           </Form.Item>
+                          {isSvc ? (
+                            <>
+                              <Form.Item name={['params', 'f0_predictor']} label="F0 预测">
+                                <Select options={[{ value: 'rmvpe', label: 'rmvpe' }, { value: 'pm', label: 'pm' }, { value: 'dio', label: 'dio' }]} />
+                              </Form.Item>
+                              <Form.Item name={['params', 'cluster_ratio']} label="Cluster">
+                                <InputNumber min={0} max={1} step={0.05} style={{ width: '100%' }} />
+                              </Form.Item>
+                              <Form.Item name={['params', 'shallow_diffusion']} valuePropName="checked">
+                                <Checkbox>浅扩散</Checkbox>
+                              </Form.Item>
+                            </>
+                          ) : null}
                         </div>
                       ),
                     },
@@ -354,8 +426,15 @@ export function Create() {
                   />
                 ) : null}
 
+                <Form.Item name="auto_start" valuePropName="checked" style={{ marginTop: 8 }}>
+                  <Checkbox>创建后立即开始翻唱（推荐）</Checkbox>
+                </Form.Item>
+
                 <Button type="primary" htmlType="submit" loading={loading} block style={{ marginTop: 12 }}>
-                  创建作品
+                  {autoStart ? submitText : '仅创建作品'}
+                </Button>
+                <Button block style={{ marginTop: 8 }} disabled={loading} onClick={() => form.validateFields().then((v) => submitPipeline(v, false))}>
+                  仅创建、稍后运行
                 </Button>
               </Card>
             </div>
@@ -380,6 +459,15 @@ export function Create() {
               <Tag color="green">{createdWork.stage}</Tag>
             </Descriptions.Item>
           </Descriptions>
+          <Space style={{ marginTop: 12 }}>
+            <Link to="/works">前往作品库</Link>
+            <Button type="primary" size="small" onClick={() => api.startWork(createdWork.id).then((r) => {
+              if (r.ok) {
+                message.success('已开始')
+                navigate('/works')
+              } else message.error(r.error)
+            })}>立即开始</Button>
+          </Space>
         </Card>
       ) : null}
     </Space>

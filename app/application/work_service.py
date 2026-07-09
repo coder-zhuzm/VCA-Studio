@@ -75,6 +75,9 @@ def _params(payload: dict[str, Any]) -> dict[str, Any]:
         "speaker": speaker,
         "cluster_ratio": number("cluster_ratio", 0),
         "shallow_diffusion": bool(params.get("shallow_diffusion")),
+        "vocal_volume": number("vocal_volume", 1.0),
+        "instrumental_volume": number("instrumental_volume", 0.85),
+        "skip_dereverb": bool(params.get("skip_dereverb")),
     }
 
 
@@ -521,7 +524,14 @@ class WorkService:
             vocals_path = self._vocals_path(work)
             if not vocals_path or not Path(vocals_path).is_file():
                 return "人声输入文件缺失。"
+        if self._will_mix_with_instrumental(work):
+            ffmpeg = str(getattr(self._stem_preparer, "_ffmpeg_path", "") or "").strip() or shutil.which("ffmpeg") or ""
+            if not ffmpeg:
+                return "作品含伴奏混音，请先配置 ffmpeg 路径。"
         return ""
+
+    def _will_mix_with_instrumental(self, work: dict[str, Any]) -> bool:
+        return bool(self._instrumental_path(work))
 
     def _run_work(self, work_id: str) -> None:
         work = self._repo.get(work_id)
@@ -614,7 +624,7 @@ class WorkService:
                 "filename": Path(str(result.get("instrumental"))).name,
             })
         work = {**work, "input_files": files}
-        work = self._mark_step(work, "separate", "done", "UVR 分离完成", 60, "separating")
+        work = self._mark_step(work, "separate", "done", "UVR 分离完成", 60, "inferencing")
         self._write_metadata(work)
         self._repo.update_item(str(work["id"]), work)
         return work
@@ -732,19 +742,26 @@ class WorkService:
         if not work_dir:
             return self._fail_work(work, "Work directory not found")
         source = Path(ai_vocal_path)
+        if not source.is_file():
+            return self._fail_work(work, "AI 人声文件缺失。")
         target = work_dir / "output" / "final.wav"
+        instrumental = self._instrumental_path(work)
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
-            instrumental = self._instrumental_path(work)
             if instrumental:
-                self._mix_final(source, Path(instrumental), target)
+                work = self._mark_step(work, "mix", "running", "与伴奏混音", 85, "mixing")
+                self._mix_final(source, Path(instrumental), target, work.get("params") or {})
             else:
                 shutil.copy2(source, target)
             if not target.is_file():
                 raise OSError("输出文件未生成。")
         except (OSError, subprocess.SubprocessError) as exc:
             return self._fail_work(work, str(exc))
-        entry = {"level": "info", "message": "RVC inference finished", "created_at": _now()}
+        done_msg = "翻唱完成（已混音）" if instrumental else "翻唱完成（干声输出）"
+        entry = {"level": "info", "message": done_msg, "created_at": _now()}
+        mix_steps = []
+        if instrumental:
+            mix_steps = [self._step("mix", "done", entry["created_at"], "混音完成")]
         updated = {
             **work,
             "status": "done",
@@ -752,8 +769,9 @@ class WorkService:
             "progress": 100,
             "output_files": {"ai_vocal": str(source), "final": str(target)},
             "steps": [
-                *(step for step in (work.get("steps") or []) if step.get("key") != "run"),
-                self._step("run", "done", entry["created_at"], entry["message"]),
+                *(step for step in (work.get("steps") or []) if step.get("key") not in ("run", "mix")),
+                self._step("run", "done", entry["created_at"], "推理完成"),
+                *mix_steps,
             ],
             "logs": [*(work.get("logs") or []), entry],
             "updated_at": entry["created_at"],
@@ -768,18 +786,37 @@ class WorkService:
         path = str((instrumental or {}).get("stored_path") or "")
         return path if path and Path(path).is_file() else ""
 
-    def _mix_final(self, vocal: Path, instrumental: Path, target: Path) -> None:
-        ffmpeg = getattr(self._stem_preparer, "_ffmpeg_path", "")
+    def _mix_final(self, vocal: Path, instrumental: Path, target: Path, params: dict[str, Any] | None = None) -> None:
+        ffmpeg = getattr(self._stem_preparer, "_ffmpeg_path", "") or shutil.which("ffmpeg") or ""
         if not ffmpeg:
             raise OSError("混音需要先配置 ffmpeg。")
+        params = params or {}
+        vocal_gain = float(params.get("vocal_volume") if params.get("vocal_volume") is not None else 1.0)
+        inst_gain = float(params.get("instrumental_volume") if params.get("instrumental_volume") is not None else 0.85)
+        filter_graph = (
+            f"[0:a]volume={inst_gain}[inst];[1:a]volume={vocal_gain}[voc];"
+            f"[inst][voc]amix=inputs=2:duration=longest:dropout_transition=0,alimiter=limit=0.9"
+        )
         subprocess.run(
-            [ffmpeg, "-y", "-i", str(instrumental), "-i", str(vocal), "-filter_complex", "amix=inputs=2:duration=longest", str(target)],
+            [
+                ffmpeg,
+                "-y",
+                "-i",
+                str(instrumental),
+                "-i",
+                str(vocal),
+                "-filter_complex",
+                filter_graph,
+                "-ar",
+                "44100",
+                str(target),
+            ],
             capture_output=True,
             check=True,
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=120,
+            timeout=300,
             **config.subprocess_no_window(),
         )
 

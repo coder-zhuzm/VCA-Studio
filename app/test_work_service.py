@@ -178,6 +178,14 @@ def smoke() -> None:
         assert any("amix" in str(call.args) for call in run.call_args_list)
 
     with tempfile.TemporaryDirectory() as root:
+        service, work_id = _service(Path(root) / "mixblock", True, stems=True)
+        service._stem_preparer._ffmpeg_path = ""
+        with patch("application.work_service.shutil.which", return_value=None):
+            work = service.start_work(work_id)["work"]
+        assert work["status"] == "failed"
+        assert "ffmpeg" in work["logs"][-1]["message"]
+
+    with tempfile.TemporaryDirectory() as root:
         service, work_id = _service(Path(root) / "fail", False)
         work = service.start_work(work_id)["work"]
         assert work["status"] == "running"

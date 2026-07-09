@@ -204,6 +204,12 @@ export interface WorkParams {
   protect: number
   filter_radius: number
   device: string
+  f0_predictor?: string
+  cluster_ratio?: number
+  shallow_diffusion?: boolean
+  vocal_volume?: number
+  instrumental_volume?: number
+  skip_dereverb?: boolean
 }
 
 export interface WorkMutationResult {
