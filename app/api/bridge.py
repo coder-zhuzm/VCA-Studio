@@ -13,6 +13,7 @@ try:
     import config
     from application.inference_runner import InferenceRunner
     from application.model_service import ModelService
+    from application.runtime_installer import RuntimeInstaller
     from application.runtime_service import RuntimeService
     from application.stem_preparer import StemPreparer
     from application.work_service import WorkService
@@ -28,6 +29,7 @@ except ModuleNotFoundError:
     import config
     from application.inference_runner import InferenceRunner
     from application.model_service import ModelService
+    from application.runtime_installer import RuntimeInstaller
     from application.runtime_service import RuntimeService
     from application.stem_preparer import StemPreparer
     from application.work_service import WorkService
@@ -46,12 +48,14 @@ class Api:
         models: ModelService,
         stem_preparer: StemPreparer,
         works: WorkService,
+        installer: RuntimeInstaller,
     ) -> None:
         self._settings = settings
         self._runtime = runtime
         self._models = models
         self._stem_preparer = stem_preparer
         self._works = works
+        self._installer = installer
         self._window = None
 
     def set_window(self, window) -> None:  # noqa: ANN001
@@ -116,6 +120,27 @@ class Api:
 
     def set_runtime_paths(self, paths: dict[str, Any]) -> dict[str, Any]:
         return self._runtime.set_paths(paths)
+
+    def get_host_profile(self) -> dict[str, Any]:
+        return self._installer.host_profile()
+
+    def list_runtime_install_tasks(self) -> dict[str, Any]:
+        return self._installer.list_tasks()
+
+    def run_runtime_install_task(self, task_id: str) -> dict[str, Any]:
+        return self._installer.run_task(task_id)
+
+    def get_runtime_install_status(self) -> dict[str, Any]:
+        return self._installer.install_status()
+
+    def read_runtime_install_log(self) -> dict[str, Any]:
+        path = config.DATA_DIR / "runtime_install.log"
+        if not path.is_file():
+            return {"ok": True, "content": ""}
+        try:
+            return {"ok": True, "content": path.read_text(encoding="utf-8", errors="replace")[-120_000:]}
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)}
 
     def list_models(self) -> list[dict[str, Any]]:
         return self._models.list_models()
@@ -197,6 +222,7 @@ def build_api() -> Api:
     stem_preparer = StemPreparer(config.WORKS_DIR, ffmpeg_path)
     model_repo = ListRepository(config.MODELS_DB)
     runtime = RuntimeService(settings)
+    installer = RuntimeInstaller(settings)
     uvr_tool = UvrTool(settings.get("uvr_python", "") or "", settings.get("uvr_model_dir", "") or "")
     registry = EngineRegistry([RvcEngine(settings), SvcEngine(settings)])
     return Api(
@@ -212,4 +238,5 @@ def build_api() -> Api:
             InferenceRunner(settings, registry),
             uvr_tool,
         ),
+        installer,
     )

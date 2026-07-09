@@ -83,6 +83,27 @@ const mock = {
   async get_runtime_status(): Promise<RuntimeStatus> {
     return mockRuntimeStatus()
   },
+  async get_host_profile() {
+    return {
+      ok: true,
+      platform: 'browser',
+      machine: 'mock',
+      recommended_device: 'cpu',
+      notes: ['浏览器 mock'],
+    }
+  },
+  async list_runtime_install_tasks() {
+    return { ok: true, profile: await mock.get_host_profile(), tasks: [] }
+  },
+  async run_runtime_install_task() {
+    return { ok: false, error: '浏览器 mock 不支持安装。' }
+  },
+  async get_runtime_install_status() {
+    return { ok: true, job: null }
+  },
+  async read_runtime_install_log() {
+    return { ok: true, content: '' }
+  },
   async check_runtime_component(key: string): Promise<RuntimeComponentResult> {
     const status = mockRuntimeStatus()
     return { ok: true, ...status, component: status.components.find((item) => item.key === key) }
@@ -326,6 +347,11 @@ export const api = {
   chooseDirectory: async () => (await desktop()).choose_directory(),
   openDataDir: async () => (await desktop()).open_data_dir(),
   getRuntimeStatus: async () => (await desktop()).get_runtime_status(),
+  getHostProfile: async () => (await desktop()).get_host_profile(),
+  listRuntimeInstallTasks: async () => (await desktop()).list_runtime_install_tasks(),
+  runRuntimeInstallTask: async (taskId: string) => (await desktop()).run_runtime_install_task(taskId),
+  getRuntimeInstallStatus: async () => (await desktop()).get_runtime_install_status(),
+  readRuntimeInstallLog: async () => (await desktop()).read_runtime_install_log(),
   checkRuntimeComponent: async (key: string) => (await desktop()).check_runtime_component(key),
   setRuntimePath: async (key: string, path: string) => (await desktop()).set_runtime_path(key, path),
   setRuntimePaths: async (paths: Record<string, string>) => (await desktop()).set_runtime_paths(paths),

@@ -45,6 +45,32 @@ export interface SetRuntimePathResult extends RuntimeStatus {
   error?: string
 }
 
+export interface HostProfile {
+  ok: boolean
+  platform: string
+  machine: string
+  gpu_name?: string
+  driver_version?: string
+  cuda_detected?: boolean
+  recommended_device: string
+  notes: string[]
+}
+
+export interface RuntimeInstallTask {
+  id: string
+  label: string
+  description: string
+  risk: string
+  available: boolean
+}
+
+export interface RuntimeInstallJob {
+  id: string
+  status: 'running' | 'done' | 'failed'
+  message: string
+  progress?: number
+}
+
 export type ModelFramework = 'rvc' | 'so-vits-svc'
 export type ModelStatus = 'ready' | 'missing' | 'error'
 
@@ -244,6 +270,11 @@ export interface DesktopApi {
   choose_directory: () => Promise<OpenPathResult>
   open_data_dir: () => Promise<OpenPathResult>
   get_runtime_status: () => Promise<RuntimeStatus>
+  get_host_profile: () => Promise<HostProfile>
+  list_runtime_install_tasks: () => Promise<{ ok: boolean; profile: HostProfile; tasks: RuntimeInstallTask[] }>
+  run_runtime_install_task: (taskId: string) => Promise<{ ok: boolean; error?: string; message?: string }>
+  get_runtime_install_status: () => Promise<{ ok: boolean; job: RuntimeInstallJob | null; log_path?: string }>
+  read_runtime_install_log: () => Promise<{ ok: boolean; content?: string; error?: string }>
   check_runtime_component: (key: string) => Promise<RuntimeComponentResult>
   set_runtime_path: (key: string, path: string) => Promise<SetRuntimePathResult>
   set_runtime_paths: (paths: Record<string, string>) => Promise<SetRuntimePathResult>

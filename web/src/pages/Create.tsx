@@ -227,6 +227,15 @@ export function Create() {
   }
 
   useEffect(() => {
+    api.getHostProfile().then((p) => {
+      if (p?.recommended_device) {
+        const cur = form.getFieldValue(['params', 'device'])
+        if (!cur || cur === 'auto') form.setFieldValue(['params', 'device'], p.recommended_device)
+      }
+    }).catch(() => undefined)
+  }, [])
+
+  useEffect(() => {
     api.listModels().then((items) => {
       setModels(items)
       const preferred = items.find((item) => item.is_default) ?? items[0]
