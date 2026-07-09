@@ -1,4 +1,4 @@
-import { Button, Card, Descriptions, Form, Input, Progress, Space, Table, Tag, Typography, message } from 'antd'
+import { Button, Card, Collapse, Descriptions, Form, Input, Progress, Space, Table, Tag, Typography, message } from 'antd'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import type {
@@ -71,6 +71,39 @@ export function Runtime() {
   }
 
   const installBusy = Boolean(installingId) || installJob?.status === 'running'
+
+  const ffmpegStatus = status?.components.find((c) => c.key === 'ffmpeg')
+  const rvcStatus = status?.components.find((c) => c.key === 'rvc')
+  const taskById = Object.fromEntries(tasks.map((t) => [t.id, t]))
+
+  const readiness = [
+    {
+      key: 'ffmpeg',
+      title: 'ffmpeg（必需）',
+      status: ffmpegStatus?.status ?? 'missing',
+      message: ffmpegStatus?.message ?? '未检测',
+      primaryTaskId: taskById.ffmpeg_winget?.available
+        ? 'ffmpeg_winget'
+        : 'ffmpeg_path_hint',
+      primaryLabel: taskById.ffmpeg_winget?.available ? '安装 ffmpeg' : '检测并绑定',
+    },
+    {
+      key: 'rvc',
+      title: 'RVC（必需）',
+      status: rvcStatus?.status ?? 'missing',
+      message: rvcStatus?.message ?? '未检测',
+      primaryTaskId: taskById.rvc_venv_cuda?.available
+        ? 'rvc_venv_cuda'
+        : taskById.rvc_venv_cpu?.available
+          ? 'rvc_venv_cpu'
+          : '',
+      primaryLabel: taskById.rvc_venv_cuda?.available
+        ? '安装 RVC（CUDA）'
+        : taskById.rvc_venv_cpu?.available
+          ? '安装 RVC（CPU）'
+          : '已就绪或请手填路径',
+    },
+  ]
 
   async function refresh() {
     setLoading(true)
@@ -222,8 +255,34 @@ export function Runtime() {
         </Card>
       ) : null}
 
+      <Card title="就绪清单（先完成这两项）" size="small">
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+          混音依赖 ffmpeg；翻唱推理依赖 RVC。UVR / So-VITS-SVC 可在下方手填路径（本页不提供一键安装）。
+        </Typography.Paragraph>
+        {readiness.map((row) => (
+          <div key={row.key} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+            <div>
+              <Space>
+                <Typography.Text strong>{row.title}</Typography.Text>
+                <Tag color={STATUS_COLOR[row.status as RuntimeStatusValue] ?? 'default'}>{row.status}</Tag>
+              </Space>
+              <div><Typography.Text type="secondary">{row.message}</Typography.Text></div>
+            </div>
+            <Button
+              type="primary"
+              size="small"
+              disabled={installBusy || !row.primaryTaskId || row.status === 'ready'}
+              loading={installingId === row.primaryTaskId}
+              onClick={() => row.primaryTaskId && runInstall(row.primaryTaskId)}
+            >
+              {row.status === 'ready' ? '已完成' : row.primaryLabel}
+            </Button>
+          </div>
+        ))}
+      </Card>
+
       <Card
-        title="可选安装（用户确认后执行）"
+        title="其它安装任务"
         extra={<Button onClick={refresh} loading={loading} disabled={installBusy}>刷新</Button>}
       >
         {installBusy ? (
@@ -304,31 +363,35 @@ export function Runtime() {
         </pre>
       </Card>
 
-      <Card
-        title="运行环境路径"
-        extra={
-          <Space>
-            <Button onClick={refresh} loading={loading} disabled={installBusy}>刷新状态</Button>
-            <Button type="primary" onClick={save} loading={loading} disabled={installBusy}>保存并检测</Button>
-          </Space>
-        }
-      >
-        <Form form={form} layout="vertical">
-          {PATH_FIELDS.map(([key, label]) => (
-            <Form.Item key={key} name={key} label={label}>
-              <Input
-                placeholder="留空则使用 PATH 或显示未配置"
-                allowClear
-                disabled={installBusy}
-                addonAfter={
-                  <Button type="link" size="small" disabled={installBusy} onClick={() => choosePath(key)}>
-                    选择
-                  </Button>
-                }
-              />
-            </Form.Item>
-          ))}
-        </Form>
+      <Card title="高级：手动路径" size="small">
+        <Collapse
+          items={[{
+            key: 'paths',
+            label: '已有自建环境时展开填写',
+            children: (
+              <>
+                <Form form={form} layout="vertical">
+                  {PATH_FIELDS.map(([key, label]) => (
+                    <Form.Item key={key} name={key} label={label}>
+                      <Input
+                        allowClear
+                        disabled={installBusy}
+                        addonAfter={
+                          <Button type="link" size="small" disabled={installBusy} onClick={() => choosePath(key)}>
+                            选择
+                          </Button>
+                        }
+                      />
+                    </Form.Item>
+                  ))}
+                </Form>
+                <Button type="primary" onClick={save} loading={loading} disabled={installBusy}>
+                  保存并检测
+                </Button>
+              </>
+            ),
+          }]}
+        />
       </Card>
 
       <Card title="组件状态">
