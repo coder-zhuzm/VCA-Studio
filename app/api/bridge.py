@@ -79,6 +79,23 @@ class Api:
         paths = self._window.create_file_dialog(webview.OPEN_DIALOG, allow_multiple=False)
         return {"ok": True, "path": str(paths[0]) if paths else ""}
 
+    def read_text_file(self, path: str, max_bytes: int = 512_000) -> dict[str, Any]:
+        target = Path(str(path or "").strip()).expanduser()
+        if not target.is_file():
+            return {"ok": False, "error": "文件不存在。"}
+        if target.stat().st_size > max(1024, int(max_bytes)):
+            return {"ok": False, "error": "文件过大，请粘贴内容。"}
+        try:
+            content = target.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            try:
+                content = target.read_text(encoding="gbk")
+            except OSError as exc:
+                return {"ok": False, "error": str(exc)}
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True, "path": str(target), "content": content}
+
     def choose_directory(self) -> dict[str, Any]:
         if not self._window:
             return {"ok": False, "error": "Window not ready"}
@@ -147,6 +164,9 @@ class Api:
 
     def read_work_log(self, work_id: str) -> dict[str, Any]:
         return self._works.read_work_log(work_id)
+
+    def read_work_audio(self, work_id: str, kind: str = "final") -> dict[str, Any]:
+        return self._works.read_work_audio(work_id, kind)
 
     def open_work_dir(self, work_id: str) -> dict[str, Any]:
         return self._works.open_work_dir(work_id)

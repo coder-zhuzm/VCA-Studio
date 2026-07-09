@@ -172,9 +172,22 @@ export interface WorkRecord {
   updated_at: string
 }
 
+export interface WorkAudioResult {
+  ok: boolean
+  error?: string
+  work_id?: string
+  kind?: string
+  path?: string
+  mime?: string
+  data_base64?: string
+}
+
 export interface CreateWorkPayload {
   name: string
-  model_id: string
+  model_id?: string
+  models?: WorkModelEntry[]
+  segments?: Segment[]
+  lrc_text?: string
   params?: WorkParams
   mode: WorkInputMode
   song_path?: string
@@ -219,6 +232,7 @@ export interface DesktopApi {
   get_settings: () => Promise<Record<string, unknown>>
   set_setting: (key: string, value: unknown) => Promise<SetSettingResult>
   choose_file: () => Promise<OpenPathResult>
+  read_text_file: (path: string) => Promise<{ ok: boolean; error?: string; content?: string; path?: string }>
   choose_directory: () => Promise<OpenPathResult>
   open_data_dir: () => Promise<OpenPathResult>
   get_runtime_status: () => Promise<RuntimeStatus>
@@ -241,6 +255,7 @@ export interface DesktopApi {
   export_work: (workId: string, targetDir: string) => Promise<OpenPathResult>
   delete_work: (workId: string) => Promise<WorkMutationResult>
   read_work_log: (workId: string) => Promise<WorkLogContentResult>
+  read_work_audio: (workId: string, kind?: string) => Promise<WorkAudioResult>
   open_work_dir: (workId: string) => Promise<OpenPathResult>
   open_work_log: (workId: string) => Promise<OpenPathResult>
   update_work_segments: (workId: string, segments: Segment[]) => Promise<WorkMutationResult>

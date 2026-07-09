@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import queue
@@ -120,6 +121,9 @@ class WorkService:
         input_files = self._input_files(prepared.get("files") or {}, payload)
         work_dir = self._work_dir_from_input_files(input_files)
         segments = payload.get("segments") if isinstance(payload.get("segments"), list) else []
+        lrc_text = str(payload.get("lrc_text") or "").strip()
+        if not segments and lrc_text:
+            segments = build_segments([], lrc_text, models[0]["model_id"], None)
         log_entry = {
             "level": "info",
             "message": "Input prepared",
@@ -394,6 +398,59 @@ class WorkService:
         except OSError as exc:
             return {"ok": False, "error": str(exc)}
         return {"ok": True, "work_id": str(work_id), "log_path": log_path, "content": content}
+
+    def read_work_audio(self, work_id: str, kind: str) -> dict[str, Any]:
+        work = self._repo.get(str(work_id))
+        if not work:
+            return {"ok": False, "error": "Work not found"}
+        work_dir = self._work_dir_from_record(work)
+        if not work_dir:
+            return {"ok": False, "error": "Work directory not found"}
+        output_files = work.get("output_files") or {}
+        key = str(kind or "final").strip().lower()
+        candidates: list[Path] = []
+        if key == "final":
+            candidates = [
+                Path(str(output_files.get("final") or "")),
+                work_dir / "output" / "final.wav",
+            ]
+        elif key in ("ai_vocal", "vocal", "vocals"):
+            candidates = [
+                Path(str(output_files.get("ai_vocal") or "")),
+                work_dir / "inference" / "merged_vocal.wav",
+                work_dir / "inference" / "ai_vocal.wav",
+            ]
+        elif key == "instrumental":
+            inst = self._instrumental_path(work)
+            if inst:
+                candidates = [Path(inst)]
+        else:
+            return {"ok": False, "error": f"不支持的试听类型: {kind}"}
+        path: Path | None = None
+        for candidate in candidates:
+            if candidate and candidate.is_file():
+                path = candidate
+                break
+        if not path:
+            return {"ok": False, "error": "音频文件不存在。"}
+        try:
+            resolved = path.resolve()
+            if not self._is_safe_work_dir(work_dir.resolve()):
+                return {"ok": False, "error": "非法作品目录。"}
+            if not resolved.is_relative_to(work_dir.resolve()):
+                return {"ok": False, "error": "非法音频路径。"}
+            data = resolved.read_bytes()
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)}
+        mime = "audio/wav" if resolved.suffix.lower() == ".wav" else "application/octet-stream"
+        return {
+            "ok": True,
+            "work_id": str(work_id),
+            "kind": key,
+            "path": str(resolved),
+            "mime": mime,
+            "data_base64": base64.b64encode(data).decode("ascii"),
+        }
 
     def open_work_dir(self, work_id: str) -> dict[str, Any]:
         work = self._repo.get(str(work_id))

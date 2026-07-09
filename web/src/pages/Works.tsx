@@ -2,6 +2,7 @@ import { Button, Card, Descriptions, Drawer, Popconfirm, Progress, Space, Table,
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
+import { WorkAudioPreview } from '../components/WorkAudioPreview'
 import type { WorkInputFile, WorkLog, WorkRecord, WorkStage, WorkStatus, WorkStep } from '../api/types'
 
 const STATUS_COLOR: Record<WorkStatus, string> = {
@@ -40,7 +41,17 @@ export function Works() {
         message.error(result.error ?? '加载失败')
         return
       }
-      setWorks(result.works ?? [])
+      const list = result.works ?? []
+      setWorks(list)
+      if (selectedWork) {
+        const fresh = list.find((w) => w.id === selectedWork.id)
+        if (fresh) {
+          setSelectedWork(fresh)
+          if (fresh.status === 'running' || fresh.status === 'pending') {
+            void loadLog(fresh.id)
+          }
+        }
+      }
     } finally {
       setLoading(false)
     }
@@ -167,6 +178,16 @@ export function Works() {
     void refresh()
   }, [])
 
+  const hasRunning = works.some((w) => w.status === 'running')
+
+  useEffect(() => {
+    if (!hasRunning) return
+    const timer = window.setInterval(() => {
+      void refresh()
+    }, 2500)
+    return () => window.clearInterval(timer)
+  }, [hasRunning])
+
   return (
     <>
       <Card title="作品库" extra={<Button onClick={refresh} loading={loading}>刷新</Button>}>
@@ -287,6 +308,21 @@ export function Works() {
                 </Space>
               </Descriptions.Item>
             </Descriptions>
+
+            {selectedWork.status === 'done' ? (
+              <Card title="试听" size="small">
+                <WorkAudioPreview
+                  workId={selectedWork.id}
+                  kinds={[
+                    'final',
+                    'ai_vocal',
+                    ...(selectedWork.input_mode === 'stems' || selectedWork.input_files.some((f) => f.role === 'instrumental')
+                      ? (['instrumental'] as const)
+                      : []),
+                  ]}
+                />
+              </Card>
+            ) : null}
 
             <Card title="输入文件" size="small">
               <Table<WorkInputFile>

@@ -983,9 +983,9 @@ Mac 客户端（后置）
 相对路线图「桌面级编排工作台」定位，代码已覆盖阶段 0–7 的 **MVP 后端** 与 **部分前端**；产品层仍建议优先补齐：
 
 ```text
-/create：LRC 导入 + 多模型编排 UI（后端 create_work 已支持 models + segments）
-/works：运行中自动轮询 + 应用内试听（final / ai_vocal）
-导航：侧栏 /editor 无 id，应从作品库进入 /editor/:id
+/create：多模型 per-model 参数 UI 仍较简（变调/Index）；SVC 专项表单项待补
+/works：运行中自动轮询 + 详情内试听（read_work_audio）已做
+导航：/editor 作品选择页 + /editor/:id 已做
 真机：RVC / SVC / UVR 全链路在目标 Windows 环境验收
 P3.6：Guide Singer；完整 waveform 多轨编辑器；在线曲库 / ModelScope 全站
 ```

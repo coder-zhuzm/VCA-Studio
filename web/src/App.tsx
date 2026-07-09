@@ -2,6 +2,7 @@ import { Layout, Menu, Typography } from 'antd'
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Create } from './pages/Create'
 import { Editor } from './pages/Editor'
+import { EditorPicker } from './pages/EditorPicker'
 import { Home } from './pages/Home'
 import { Models } from './pages/Models'
 import { Runtime } from './pages/Runtime'
@@ -25,7 +26,12 @@ export function App() {
         <Typography.Title level={4} style={{ color: 'white', padding: '20px 20px 8px', margin: 0 }}>
           VCA-Studio
         </Typography.Title>
-        <Menu theme="dark" mode="inline" selectedKeys={[location.pathname]} items={items} />
+        <Menu
+          theme="dark"
+          mode="inline"
+          selectedKeys={[location.pathname.startsWith('/editor') ? '/editor' : location.pathname]}
+          items={items}
+        />
       </Layout.Sider>
       <Layout>
         <Layout.Content style={{ padding: 24 }}>
@@ -35,6 +41,7 @@ export function App() {
             <Route path="/models" element={<Models />} />
             <Route path="/create" element={<Create />} />
             <Route path="/works" element={<Works />} />
+            <Route path="/editor" element={<EditorPicker />} />
             <Route path="/editor/:id" element={<Editor />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

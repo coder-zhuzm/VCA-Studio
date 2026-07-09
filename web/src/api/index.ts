@@ -15,6 +15,7 @@ import type {
   SetRuntimePathResult,
   SetSettingResult,
   WorkLogContentResult,
+  WorkAudioResult,
   WorkMutationResult,
   WorkRecord,
 } from './types'
@@ -69,6 +70,9 @@ const mock = {
   },
   async choose_file(): Promise<OpenPathResult> {
     return { ok: false, error: '浏览器 mock 不支持文件选择，请手动输入路径。' }
+  },
+  async read_text_file(): Promise<{ ok: boolean; error?: string; content?: string }> {
+    return { ok: false, error: '浏览器 mock 不支持读取文件。' }
   },
   async choose_directory(): Promise<OpenPathResult> {
     return { ok: false, error: '浏览器 mock 不支持目录选择，请手动输入路径。' }
@@ -148,6 +152,7 @@ const mock = {
   async create_work(payload: CreateWorkPayload): Promise<WorkMutationResult> {
     const now = new Date().toISOString()
     const workId = `work_${Date.now()}`
+    const modelId = payload.model_id || payload.models?.[0]?.model_id || ''
     const files = [
       payload.song_path ? ['input_song', payload.song_path] : undefined,
       payload.vocals_path ? ['vocals', payload.vocals_path] : undefined,
@@ -156,7 +161,9 @@ const mock = {
     const work: WorkRecord = {
       id: workId,
       name: payload.name || 'Untitled Work',
-      model_id: payload.model_id,
+      model_id: modelId,
+      models: payload.models,
+      segments: payload.segments,
       params: payload.params,
       input_mode: payload.mode,
       input_files: files.map(([role, path]) => ({
@@ -246,6 +253,9 @@ const mock = {
       content: work.logs.map((log) => `${log.created_at} [${log.level}] ${log.message}`).join('\n'),
     }
   },
+  async read_work_audio(): Promise<WorkAudioResult> {
+    return { ok: false, error: '浏览器 mock 不支持试听。' }
+  },
   async open_work_dir(workId: string): Promise<OpenPathResult> {
     const work = mockWorks.find((item) => item.id === workId)
     return work ? { ok: true, path: work.work_dir } : { ok: false, error: 'Work not found' }
@@ -312,6 +322,7 @@ export const api = {
   getSettings: async () => (await desktop()).get_settings(),
   setSetting: async (key: string, value: unknown) => (await desktop()).set_setting(key, value),
   chooseFile: async () => (await desktop()).choose_file(),
+  readTextFile: async (path: string) => (await desktop()).read_text_file(path),
   chooseDirectory: async () => (await desktop()).choose_directory(),
   openDataDir: async () => (await desktop()).open_data_dir(),
   getRuntimeStatus: async () => (await desktop()).get_runtime_status(),
@@ -334,6 +345,7 @@ export const api = {
   exportWork: async (workId: string, targetDir: string) => (await desktop()).export_work(workId, targetDir),
   deleteWork: async (workId: string) => (await desktop()).delete_work(workId),
   readWorkLog: async (workId: string) => (await desktop()).read_work_log(workId),
+  readWorkAudio: async (workId: string, kind = 'final') => (await desktop()).read_work_audio(workId, kind),
   openWorkDir: async (workId: string) => (await desktop()).open_work_dir(workId),
   openWorkLog: async (workId: string) => (await desktop()).open_work_log(workId),
   updateWorkSegments: async (workId: string, segments: Segment[]) => (await desktop()).update_work_segments(workId, segments),
