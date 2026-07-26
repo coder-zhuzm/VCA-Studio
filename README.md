@@ -1,6 +1,6 @@
 # VCA-Studio
 
-VCA-Studio 是桌面级 **AI 翻唱编排工作台**：单模型翻唱、多模型混唱、片段时间轴、局部重渲染与原唱解析 MVP 已接入后端；详细阶段说明见 [VCA_IMPLEMENTATION_ROADMAP.md](./VCA_IMPLEMENTATION_ROADMAP.md)。
+VCA-Studio 是桌面级 **AI 翻唱编排工作台**：单模型翻唱、多模型混唱、片段时间轴、局部重渲染与原唱解析 MVP 已接入后端；详细阶段说明见 [VCA_IMPLEMENTATION_ROADMAP.md](./VCA_IMPLEMENTATION_ROADMAP.md)，从当前 MVP 到完整版与长期演进的规划见 [PRODUCT_PLAN.md](./PRODUCT_PLAN.md)。
 
 ## 当前进度（2026-07-26）
 
