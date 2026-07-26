@@ -33,6 +33,11 @@ class RuntimeService:
     def __init__(self, settings: SettingsStore) -> None:
         self._settings = settings
 
+    def get_path(self, key: str) -> str:
+        if key not in RUNTIME_PATH_KEYS:
+            return ""
+        return str(self._settings.get(key, "") or "").strip()
+
     def status(self) -> dict[str, Any]:
         return {
             "components": [self.check_component(key) for key in _COMPONENTS],

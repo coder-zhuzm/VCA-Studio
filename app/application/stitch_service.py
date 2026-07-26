@@ -4,7 +4,13 @@ Strategy (per the P1 plan): each model is inferred on the full vocal track,
 then per-segment cuts are taken from the assigned model's render, faded at the
 edges to avoid clicks, and concatenated. Multiple assigned models in one segment
 are mixed at equal loudness. `mute` emits silence; `original` reuses the source
-vocal. Cross-segment continuity is kept by edge fades.
+vocal.
+
+Timeline correctness: segments are placed on the ABSOLUTE timeline — silence is
+inserted before the first segment and into any gap between segments, and the
+tail is padded to the source vocal duration, so the merged vocal always lines
+up with the instrumental at t=0. Every clip is rendered with the same sample
+rate / channel count / pcm_s16le codec so the concat demuxer can copy safely.
 """
 
 from __future__ import annotations
@@ -17,10 +23,13 @@ from typing import Any
 
 import config
 
+_EPS = 0.005  # ignore sub-5ms gaps/overlaps
+
 
 class StitchService:
-    def __init__(self, ffmpeg_path: str = "") -> None:
+    def __init__(self, ffmpeg_path: str = "", ffprobe_path: str = "") -> None:
         self._ffmpeg = str(ffmpeg_path or "").strip() or (shutil.which("ffmpeg") or "ffmpeg")
+        self._ffprobe = str(ffprobe_path or "").strip() or (shutil.which("ffprobe") or "ffprobe")
 
     def stitch(
         self,
@@ -32,19 +41,39 @@ class StitchService:
     ) -> str:
         output = Path(output_path)
         output.parent.mkdir(parents=True, exist_ok=True)
-        sr, ch = self._probe(vocals_path) if Path(vocals_path).is_file() else (44100, 2)
+        has_vocals = Path(vocals_path).is_file()
+        sr, ch = self._probe(vocals_path) if has_vocals else (44100, 2)
+        total = self._probe_duration(vocals_path) if has_vocals else None
+
+        ordered = sorted(
+            (seg for seg in segments if float(seg.get("end") or 0) - float(seg.get("start") or 0) > 0),
+            key=lambda seg: float(seg.get("start") or 0),
+        )
 
         with tempfile.TemporaryDirectory() as work_dir:
             clips: list[str] = []
-            for idx, seg in enumerate(segments):
+            cursor = 0.0
+            for idx, seg in enumerate(ordered):
                 start = float(seg.get("start") or 0)
                 end = float(seg.get("end") or start)
-                dur = max(end - start, 0.0)
-                if dur <= 0:
-                    continue
+                if end <= cursor + _EPS:
+                    continue  # fully covered by previous segment
+                if start < cursor - _EPS:
+                    start = cursor  # overlap: trim to the part not yet rendered
+                gap = start - cursor
+                if gap > _EPS:
+                    silence = Path(work_dir) / f"gap_{idx:03d}.wav"
+                    self._silence(silence, gap, sr, ch, log_path)
+                    clips.append(str(silence))
+                dur = end - start
                 clip = Path(work_dir) / f"seg_{idx:03d}.wav"
-                self._render_segment(clip, seg, dur, sr, ch, model_full_paths, vocals_path, log_path)
+                self._render_segment(clip, seg, start, dur, sr, ch, model_full_paths, vocals_path, log_path)
                 clips.append(str(clip))
+                cursor = end
+            if total is not None and total - cursor > _EPS:
+                tail = Path(work_dir) / "tail.wav"
+                self._silence(tail, total - cursor, sr, ch, log_path)
+                clips.append(str(tail))
 
             if not clips:
                 raise RuntimeError("没有可拼接的片段。")
@@ -56,25 +85,43 @@ class StitchService:
             )
         if not output.is_file():
             raise RuntimeError("拼接未生成输出文件。")
-        self._limit(output, log_path)
+        self._limit(output, sr, ch, log_path)
         return str(output)
 
-    def _limit(self, path: Path, log_path: str) -> None:
+    def _limit(self, path: Path, sr: int, ch: int, log_path: str) -> None:
         limited = path.with_suffix(".limited.wav")
         self._run(
-            [self._ffmpeg, "-y", "-i", str(path), "-af", "alimiter=level_in=1:limit=0.8:asc=1:attack=5:release=50", str(limited)],
+            [
+                self._ffmpeg, "-y", "-i", str(path),
+                "-af", "alimiter=level_in=1:limit=0.8:asc=1:attack=5:release=50",
+                *self._fmt(sr, ch),
+                str(limited),
+            ],
             log_path,
         )
         if limited.is_file():
             limited.replace(path)
 
-    def _render_segment(self, clip: Path, seg: dict[str, Any], dur: float, sr: int, ch: int, model_full_paths: dict[str, str], vocals_path: str, log_path: str) -> None:
+    def _render_segment(
+        self,
+        clip: Path,
+        seg: dict[str, Any],
+        start: float,
+        dur: float,
+        sr: int,
+        ch: int,
+        model_full_paths: dict[str, str],
+        vocals_path: str,
+        log_path: str,
+    ) -> None:
         mode = str(seg.get("mode") or "solo")
         if mode == "mute" or not seg.get("assigned_model_ids"):
             self._silence(clip, dur, sr, ch, log_path)
             return
+        fade_in = float(seg.get("fade_in", 0))
+        fade_out = float(seg.get("fade_out", 0))
         if mode == "original":
-            self._cut(vocals_path, float(seg["start"]), dur, clip, float(seg.get("fade_in", 0)), float(seg.get("fade_out", 0)), log_path)
+            self._cut(vocals_path, start, dur, clip, fade_in, fade_out, sr, ch, log_path)
             return
 
         sources = [model_full_paths[mid] for mid in seg["assigned_model_ids"] if mid in model_full_paths]
@@ -82,25 +129,29 @@ class StitchService:
             self._silence(clip, dur, sr, ch, log_path)
             return
         if len(sources) == 1:
-            self._cut(sources[0], float(seg["start"]), dur, clip, float(seg.get("fade_in", 0)), float(seg.get("fade_out", 0)), log_path)
+            self._cut(sources[0], start, dur, clip, fade_in, fade_out, sr, ch, log_path)
             return
         cuts = []
         with tempfile.TemporaryDirectory() as tmp:
             for i, src in enumerate(sources):
                 cut = Path(tmp) / f"c{i}.wav"
-                self._cut(src, float(seg["start"]), dur, cut, 0, 0, log_path)
+                self._cut(src, start, dur, cut, 0, 0, sr, ch, log_path)
                 cuts.append(str(cut))
-            self._mix(cuts, clip, float(seg.get("fade_in", 0)), float(seg.get("fade_out", 0)), log_path)
+            self._mix(cuts, clip, fade_in, fade_out, sr, ch, log_path)
 
-    def _cut(self, src: str, start: float, dur: float, out: Path, fade_in: float, fade_out: float, log_path: str) -> None:
+    @staticmethod
+    def _fmt(sr: int, ch: int) -> list[str]:
+        return ["-ar", str(sr), "-ac", str(ch), "-c:a", "pcm_s16le"]
+
+    def _cut(self, src: str, start: float, dur: float, out: Path, fade_in: float, fade_out: float, sr: int, ch: int, log_path: str) -> None:
         fade = self._fade_filter(fade_in, fade_out, dur)
         cmd = [self._ffmpeg, "-y", "-ss", f"{start:.4f}", "-t", f"{dur:.4f}", "-i", src]
         if fade:
             cmd += ["-af", fade]
-        cmd += [str(out)]
+        cmd += [*self._fmt(sr, ch), str(out)]
         self._run(cmd, log_path)
 
-    def _mix(self, sources: list[str], out: Path, fade_in: float, fade_out: float, log_path: str) -> None:
+    def _mix(self, sources: list[str], out: Path, fade_in: float, fade_out: float, sr: int, ch: int, log_path: str) -> None:
         count = len(sources)
         gain = 1 / (count ** 0.5)
         labels = "".join(f"[v{i}]" for i in range(count))
@@ -110,13 +161,13 @@ class StitchService:
         if fade:
             tail = f"{tail},{fade}"
         filter_complex = f"{head}{tail}"
-        cmd = [self._ffmpeg, "-y", *sum((["-i", s] for s in sources), []), "-filter_complex", filter_complex, str(out)]
+        cmd = [self._ffmpeg, "-y", *sum((["-i", s] for s in sources), []), "-filter_complex", filter_complex, *self._fmt(sr, ch), str(out)]
         self._run(cmd, log_path)
 
     def _silence(self, out: Path, dur: float, sr: int, ch: int, log_path: str) -> None:
         layout = "mono" if ch == 1 else "stereo"
         self._run(
-            [self._ffmpeg, "-y", "-f", "lavfi", "-i", f"anullsrc=r={sr}:cl={layout}", "-t", f"{dur:.4f}", str(out)],
+            [self._ffmpeg, "-y", "-f", "lavfi", "-i", f"anullsrc=r={sr}:cl={layout}", "-t", f"{dur:.4f}", *self._fmt(sr, ch), str(out)],
             log_path,
         )
 
@@ -130,10 +181,9 @@ class StitchService:
         return ",".join(parts)
 
     def _probe(self, path: str) -> tuple[int, int]:
-        ffprobe = shutil.which("ffprobe") or "ffprobe"
         try:
             result = subprocess.run(
-                [ffprobe, "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=sample_rate,channels", "-of", "default=nw=1:nk=1", path],
+                [self._ffprobe, "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=sample_rate,channels", "-of", "default=nw=1:nk=1", path],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -147,6 +197,21 @@ class StitchService:
             return sr, ch
         except (OSError, subprocess.SubprocessError, ValueError):
             return 44100, 2
+
+    def _probe_duration(self, path: str) -> float | None:
+        try:
+            result = subprocess.run(
+                [self._ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", path],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=20,
+                **config.subprocess_no_window(),
+            )
+            return float(result.stdout.strip())
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return None
 
     def _run(self, command: list[str], log_path: str) -> None:
         try:

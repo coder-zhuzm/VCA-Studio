@@ -51,10 +51,8 @@ def _params(payload: dict[str, Any]) -> dict[str, Any]:
     if method not in {"reconstruct", "cluster"}:
         method = "reconstruct"
 
-    try:
-        speaker = int(params.get("speaker") or 0)
-    except (TypeError, ValueError):
-        speaker = 0
+    # So-VITS-SVC speaker 是名称字符串（来自模型 config.json 的 spk dict）。
+    speaker = str(params.get("speaker") or "").strip()
 
     def number(key: str, default: float) -> float:
         try:
@@ -97,13 +95,22 @@ class WorkService:
         self._runtime = runtime
         self._inference_runner = inference_runner
         self._uvr_tool = uvr_tool
-        self._stitch = StitchService(getattr(stem_preparer, "_ffmpeg_path", ""))
+        ffprobe = runtime.get_path("ffprobe_path") if runtime else ""
+        self._ffprobe = ffprobe or (shutil.which("ffprobe") or "ffprobe")
+        self._stitch = StitchService(getattr(stem_preparer, "_ffmpeg_path", ""), ffprobe)
         self._pitch = PitchAnalyzer(getattr(stem_preparer, "_ffmpeg_path", ""))
+        self._recover_interrupted()
         self._queue: queue.Queue[str] = queue.Queue()
         self._queued: set[str] = set()
         self._queue_lock = threading.Lock()
         self._worker = threading.Thread(target=self._run_queue, daemon=True)
         self._worker.start()
+
+    def _recover_interrupted(self) -> None:
+        """Reset works stuck in `running` after an app crash/exit so retry works."""
+        for work in self._repo.all():
+            if work.get("status") == "running":
+                self._fail_work(work, "应用重启，任务被中断；可重试。")
 
     def create_work(self, payload: dict[str, Any]) -> dict[str, Any]:
         if payload is None:
@@ -173,7 +180,8 @@ class WorkService:
                 if not model_id:
                     continue
                 params = item.get("params") if isinstance(item.get("params"), dict) else {}
-                models.append({"model_id": model_id, "params": params})
+                # per-model params 与顶层 params 走同一套校验清洗。
+                models.append({"model_id": model_id, "params": _params({"params": params})})
         if models:
             return models
         model_id = str(payload.get("model_id") or "").strip()
@@ -264,8 +272,10 @@ class WorkService:
                 return {"ok": False, "error": str(result.get("error") or f"模型 {model_id} 推理失败。")}
             full_paths[model_id] = str(render_path)
         try:
+            # 与整轨渲染路径保持一致：先归一化（排序、推断缺失 end、指派默认模型）。
+            normalized = build_segments(segments, "", models[0]["model_id"], self._audio_duration(self._vocals_path(work)))
             merged = work_dir / "inference" / "merged_vocal.wav"
-            self._stitch.stitch(segments, full_paths, self._vocals_path(work), str(merged), str(work.get("log_path") or work_dir / "run.log"))
+            self._stitch.stitch(normalized, full_paths, self._vocals_path(work), str(merged), str(work.get("log_path") or work_dir / "run.log"))
         except Exception as exc:  # noqa: BLE001 - report stitch failure to the caller
             return {"ok": False, "error": str(exc)}
         self._finish_work(work, str(merged))
@@ -357,8 +367,6 @@ class WorkService:
         updated = {**work, "name": cleaned, "updated_at": _now()}
         self._write_metadata(updated)
         self._repo.update_item(str(work_id), updated)
-        with self._queue_lock:
-            self._queued.discard(str(work_id))
         return {"ok": True, "work": updated}
 
     def export_work(self, work_id: str, target_dir: str) -> dict[str, Any]:
@@ -673,10 +681,9 @@ class WorkService:
     def _audio_duration(self, path: str) -> float | None:
         if not path or not Path(path).is_file():
             return None
-        ffprobe = shutil.which("ffprobe") or "ffprobe"
         try:
             result = subprocess.run(
-                [ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", path],
+                [self._ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", path],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
