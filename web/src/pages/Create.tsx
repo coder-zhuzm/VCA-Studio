@@ -29,7 +29,7 @@ const MODE_LABEL: Record<WorkInputMode, string> = {
 const SVC_DEFAULT: Partial<WorkParams> = {
   f0_predictor: 'rmvpe',
   method: 'reconstruct',
-  speaker: 0,
+  speaker: '',
   cluster_ratio: 0,
   shallow_diffusion: false,
 }
@@ -395,8 +395,8 @@ export function Create() {
                       <Form.Item name={['params', 'method']} label="推理方法">
                         <Select options={[{ value: 'reconstruct', label: 'reconstruct' }, { value: 'cluster', label: 'cluster' }]} />
                       </Form.Item>
-                      <Form.Item name={['params', 'speaker']} label="Speaker ID">
-                        <InputNumber min={0} step={1} style={{ width: '100%' }} />
+                      <Form.Item name={['params', 'speaker']} label="Speaker（留空用模型默认）">
+                        <Input placeholder="config.json 中的说话人名称，留空自动取第一个" />
                       </Form.Item>
                       <Form.Item name={['params', 'cluster_ratio']} label="Cluster 比例">
                         <InputNumber min={0} max={1} step={0.05} style={{ width: '100%' }} />
