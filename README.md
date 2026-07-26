@@ -2,13 +2,17 @@
 
 VCA-Studio 是桌面级 **AI 翻唱编排工作台**：单模型翻唱、多模型混唱、片段时间轴、局部重渲染与原唱解析 MVP 已接入后端；详细阶段说明见 [VCA_IMPLEMENTATION_ROADMAP.md](./VCA_IMPLEMENTATION_ROADMAP.md)。
 
-## 当前进度（2026-07-09）
+## 当前进度（2026-07-26）
 
-**后端**：P0 单模型闭环、So-VITS-SVC 双引擎、P1 多模型整轨推理 + 拼接、合唱/limiter、`rerender_work`（缺缓存时按片段指派补推理）、UVR 分离（可降级）、模型链接/ZIP 导入、音高解析与歌词对齐 API 均已落地。
+> ⚠️ 状态分两级：**代码完成** ≠ **真机验证**。推理全链路（RVC / SVC / UVR）尚未在配置好 runtime 的真机上验收，验收前不视为可用。
+
+**后端（代码完成）**：P0 单模型闭环、So-VITS-SVC 双引擎（`svc_worker.py` 直驱 `infer_tool.Svc`）、P1 多模型整轨推理 + 绝对时间轴拼接、合唱/limiter、`rerender_work`（缺缓存时按片段指派补推理）、UVR 分离（可降级）、模型链接/ZIP 导入、音高解析与歌词对齐 API。
+
+**2026-07-26 审计修复**：RVC CLI 改为 rvc-python 真实接口（`cli -i/-o/-mp` + `-de` 设备传递）；SVC 弃用猜测式 CLI 改走 worker，speaker 改为名称字符串；拼接改为绝对时间轴（前导/gap/尾部静音、片段格式统一）；崩溃恢复（启动时 running→failed）；新增引擎命令与拼接测试。
 
 **前端**：Runtime / 模型 / 新建翻唱（单模型）/ 作品库 / 时间轴编辑（`/editor/:id`）/ 原唱解析面板 / 从链接导入模型。
 
-**需在真机配置 Runtime 后验收**：RVC、SVC、UVR、ffmpeg 路径正确时，`start_work` 会走分离 → 推理 → 混音并写出 `output/final.wav`。
+**下一步（阻塞级）**：真机配置 Runtime 后全链路验收：RVC、SVC、UVR、ffmpeg 路径正确时，`start_work` 走分离 → 推理 → 混音并写出 `output/final.wav`。
 
 ### 已实现能力摘要
 
@@ -24,6 +28,8 @@ VCA-Studio 是桌面级 **AI 翻唱编排工作台**：单模型翻唱、多模�
 ### 已知缺口（产品层）
 
 - 多模型 per-model 参数 UI 仅覆盖变调/Index，SVC 专项参数仍待暴露
+- 长任务无取消能力；原唱解析为同步纯 Python 实现（长音频会卡 UI，视为实验性）
+- 试听走 base64 过桥（大文件内存开销高）；链接导入模型为同步下载
 - 完整多轨波形编辑器、在线曲库、ModelScope 全站、自动安装器、Guide Singer 仍后置
 
 ## 已有页面

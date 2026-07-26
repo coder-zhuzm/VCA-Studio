@@ -1,8 +1,8 @@
 # VCA-Studio 实现路线关键补充方案
 
 > 本文是对 `PROJECT_COPY_REPORT.md` 的补充，不替代原文档。  
-> 目标：在保留原规划的基础上，明确 VCA-Studio 的阶段实现顺序，避免一开始复刻完整 XB-SVCB，优先跑通 AI 翻唱核心闭环，并将“多模型混唱”作为后续差异化核心。  
-> 更新时间：2026-07-09（§11 进度与代码审计同步）
+> 目标：在保留原规划的基础上，明确 VCA-Studio 的阶段实现顺序，避免一开始复刻完整 XB-SVCB，优先跑通 AI 翻唱核心闭环，并将”多模型混唱”作为后续差异化核心。  
+> 更新时间：2026-07-26（§11 引入两级完成标准；同步引擎/拼接审计修复）
 
 ---
 
@@ -844,6 +844,11 @@ P0/P1 只支持：
 
 ## 11. 更新后的最小开发清单
 
+> **勾选标准（2026-07-26 起）**：`[x]` = 代码完成且逻辑测试通过；`[✓机]` = 真机验证通过。
+> 涉及外部 runtime（RVC / SVC / UVR）的条目在真机验收前一律不算完成。
+> 2026-07-26 审计发现并修复：RVC/SVC 引擎 CLI 与真实工具不匹配、device 未传递、
+> 拼接未做绝对时间轴对齐——此前所有"已跑通"结论仅对 mock 路径成立。
+
 ### P0 必做
 
 ```text
@@ -851,11 +856,11 @@ P0/P1 只支持：
 [x] RVC 模型导入
 [x] 三种输入模式
 [x] _prepare_stems（当前为输入复制；创建时可选 ffmpeg WAV 规范化，长期做自动检测并提示转换）
-[x] UVR 分离
-[x] RVC 推理
+[x] UVR 分离                       （待真机验证）
+[x] RVC 推理                       （2026-07-26 修正 CLI 接口与 device 传递，待真机验证）
 [x] ffmpeg 最小混音（song / stems 模式 AI vocal + instrumental → final.wav）
 [x] 作品库
-[x] 串行任务队列（start_work 入队，后台单 worker 执行）
+[x] 串行任务队列（start_work 入队，后台单 worker 执行；启动时 running→failed 对账）
 [x] 日志
 [x] WAV 导出（推理/混音成功后导出 output/final.wav）
 ```
@@ -877,20 +882,20 @@ P0 单模型 RVC 翻唱闭环已跑通：`song` 完整歌曲 → UVR 分离 → 
 - `work_service`：放开框架限制（RVC / So-VITS-SVC），运行时按框架校验 `rvc` / `svc` 组件；`_params` 扩展 SVC 参数。
 - `bridge`：装配 `EngineRegistry([RvcEngine, SvcEngine])`。
 
-说明：`SvcEngine` 的 CLI 参数面向 So-VITS-SVC 4.1 `infer_tool`，需在真实安装环境下验证；`model` 导入（`G_*.pth` + `config.json` + 可选浅扩散）此前已支持。
+说明：初版 `SvcEngine` 猜测式 CLI 已于 2026-07-26 废弃——`inference/infer_tool.py` 无 argparse 入口，各 fork CLI 参数不一。现方案为 `svc_worker.py` 在 sovits 仓库内直驱 `infer_tool.Svc` API（`inspect` 过滤 kwargs 兼容 fork 差异），speaker 使用 config.json 中的名称字符串；`model` 导入（`G_*.pth` + `config.json` + 可选浅扩散）此前已支持。
 
 ### P1 必做
 
 ```text
-[x] So-VITS-SVC 接入
+[x] So-VITS-SVC 接入（2026-07-26 重写为 svc_worker.py 直驱 Svc API，待真机验证）
 [x] LRC 导入
 [x] Segment Timeline
 [x] 多模型选择
-[x] 每模型独立参数
-[x] 每模型整轨推理
+[x] 每模型独立参数（2026-07-26 起 per-model params 过统一校验）
+[x] 每模型整轨推理（待真机验证）
 [x] 按片段裁切
-[x] crossfade 拼接（片段边缘 fade + concat）
-[x] 多模型成品输出
+[x] crossfade 拼接（2026-07-26 修复：绝对时间轴放置，前导/gap/尾部补静音，片段格式统一）
+[x] 多模型成品输出（待真机验证）
 ```
 
 ### 阶段 3 进度确认（2026-07-08）
@@ -903,7 +908,7 @@ P1 多模型混唱 MVP 已落地：
 - `application/work_service.py`：`create_work` 接受 `models`（多模型+独立 params）与 `segments`；`_run_work` 逐模型整轨推理后拼接，再与伴奏混音；`_start_blocker` 校验所有指派模型与运行时。
 - `InferenceRunner.run_rvc` 支持按模型指定输出路径。
 
-说明：拼接采用片段边缘线性 fade + concat（非重叠 crossfade），已消除咔哒声；合唱为等响度 `amix`。创建页尚未提供 LRC/多模型 UI；时间轴与合唱在 Editor 与 API 侧可用。
+说明：拼接于 2026-07-26 修复为**绝对时间轴放置**（首段前导、段间 gap、尾部补静音，所有片段统一采样率/声道后 concat），消除人声整体前移与混采样率损坏；片段边缘线性 fade 消除咔哒声；合唱为等响度 `amix`。创建页尚未提供 LRC/多模型 UI；时间轴与合唱在 Editor 与 API 侧可用。
 
 ### P2 必做
 
@@ -953,7 +958,8 @@ P1 多模型混唱 MVP 已落地：
 
 ```text
 [x] Audio Editor Lite（片段表 MVP，非完整多轨波形）
-[x] Vocal to MIDI & Lyrics 初版（自相关音高 + naive 歌词对齐）
+[~] Vocal to MIDI & Lyrics 初版（实验性：纯 Python 自相关，长音频极慢且同步阻塞 UI；
+    naive 均匀歌词对齐。P3 正式版需换 librosa/RMVPE + 异步任务队列，勿按可用功能宣传）
 [ ] Guide Singer 重唱路线验证
 ```
 
@@ -978,19 +984,22 @@ Mac 客户端（后置）
 
 说明：在线曲库（版权风险）、完整安装器、Mac 客户端、云端推理 Provider 按路线图后置，本轮未做。
 
-### 当前缺口确认（2026-07-09）
+### 当前缺口确认（2026-07-26 审计更新）
 
-相对路线图「桌面级编排工作台」定位，代码已覆盖阶段 0–7 的 **MVP 后端** 与 **部分前端**；产品层仍建议优先补齐：
+相对路线图「桌面级编排工作台」定位，代码已覆盖阶段 0–7 的 **MVP 后端** 与 **部分前端**；2026-07-26 审计修复了引擎 CLI、device 传递、拼接对齐、崩溃恢复等阻塞级缺陷。当前优先级：
 
 ```text
-/create：多模型 per-model 参数 UI 仍较简（变调/Index）；SVC 专项表单项待补
-/works：运行中自动轮询 + 详情内试听（read_work_audio）已做
-导航：/editor 作品选择页 + /editor/:id 已做
-真机：RVC / SVC / UVR 全链路在目标 Windows 环境验收
-P3.6：Guide Singer；完整 waveform 多轨编辑器；在线曲库 / ModelScope 全站
+1.（阻塞）真机全链路验收：RVC / SVC / UVR 在目标 Windows + macOS 环境跑通
+   svc_worker.py --check 可先行验证 SVC 环境
+2. 长任务取消能力（cancelled 状态已定义但无实现；子进程 timeout=None 无法中止）
+3. 原唱解析异步化或降级实验性（当前同步纯 Python，长音频卡 UI）
+4. read_work_audio base64 过桥（大文件内存高）→ 本地流式方案
+5. import_model_from_url 同步下载阻塞 → 走任务队列
+6. /create 多模型 per-model 参数 UI（SVC 专项表单项）
+7. P3.6 Guide Singer；完整 waveform 多轨编辑器；在线曲库 / ModelScope 全站（后置）
 ```
 
-`PROJECT_COPY_REPORT.md` §10 勾选已与本次审计对齐；以本文 §11 阶段说明为实施顺序权威来源。
+`PROJECT_COPY_REPORT.md` §10 勾选以本文 §11 为准；未标"真机验证"的推理相关条目均属代码完成态。
 
 ---
 
