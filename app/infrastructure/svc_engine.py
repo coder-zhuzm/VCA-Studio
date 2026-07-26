@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import config
+from infrastructure.proc_slot import SLOT
 from infrastructure.rvc_engine import resolve_device
 from infrastructure.storage import SettingsStore
 
@@ -44,14 +45,14 @@ class SvcEngine:
         try:
             with Path(log_path).open("a", encoding="utf-8") as log:
                 log.write("SVC command: " + " ".join(command) + "\n")
-                proc = subprocess.run(
+                proc = SLOT.run(
                     command,
                     cwd=str(Path(str(self._settings.get("sovits_repo", "") or "").strip()).expanduser()),
-                    capture_output=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                     text=True,
                     encoding="utf-8",
                     errors="replace",
-                    timeout=None,
                     **config.subprocess_no_window(),
                 )
                 if proc.stdout:

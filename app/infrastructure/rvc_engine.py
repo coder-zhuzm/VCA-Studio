@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import config
+from infrastructure.proc_slot import SLOT
 from infrastructure.storage import SettingsStore
 
 
@@ -47,14 +48,13 @@ class RvcEngine:
         try:
             with Path(log_path).open("a", encoding="utf-8") as log:
                 log.write("RVC command: " + " ".join(command) + "\n")
-                result = subprocess.run(
+                result = SLOT.run(
                     command,
                     stdout=log,
                     stderr=subprocess.STDOUT,
                     text=True,
                     encoding="utf-8",
                     errors="replace",
-                    timeout=None,
                     **config.subprocess_no_window(),
                 )
         except (OSError, subprocess.SubprocessError) as exc:

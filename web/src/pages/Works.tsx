@@ -10,6 +10,7 @@ const STATUS_COLOR: Record<WorkStatus, string> = {
   running: 'processing',
   done: 'green',
   failed: 'red',
+  cancelled: 'default',
 }
 
 const STAGE_COLOR: Record<WorkStage, string> = {
@@ -19,6 +20,7 @@ const STAGE_COLOR: Record<WorkStage, string> = {
   mixing: 'purple',
   exported: 'cyan',
   failed: 'red',
+  cancelled: 'default',
 }
 
 export function Works() {
@@ -150,6 +152,17 @@ export function Works() {
     }
   }
 
+  async function cancelWork(workId: string) {
+    const result = await api.cancelWork(workId)
+    if (!result.ok || !result.work) {
+      message.error(result.error ?? '取消失败')
+      return
+    }
+    message.success('已取消')
+    setWorks((items) => items.map((item) => (item.id === workId ? result.work! : item)))
+    if (selectedWork?.id === workId) setSelectedWork(result.work)
+  }
+
   async function retryWork(workId: string) {
     setRetryingId(workId)
     try {
@@ -239,10 +252,15 @@ export function Works() {
                     size="small"
                     onClick={() => retryWork(row.id)}
                     loading={retryingId === row.id}
-                    disabled={row.status !== 'failed'}
+                    disabled={row.status !== 'failed' && row.status !== 'cancelled'}
                   >
                     重试
                   </Button>
+                  <Popconfirm title="取消这个任务？" onConfirm={() => cancelWork(row.id)}>
+                    <Button size="small" danger disabled={row.status !== 'running' && row.status !== 'pending'}>
+                      取消
+                    </Button>
+                  </Popconfirm>
                   <Button size="small" onClick={() => openDetails(row.id)} loading={detailLoadingId === row.id}>
                     查看
                   </Button>

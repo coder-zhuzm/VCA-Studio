@@ -158,9 +158,41 @@ def test_stitch_mixed_rates() -> None:
     print("test_stitch_mixed_rates OK")
 
 
+
+
+def test_cancel_work() -> None:
+    """pending 作品可直接取消；cancelled 可重试回 pending。"""
+    import tempfile as _tf
+
+    from application.stem_preparer import StemPreparer
+    from application.work_service import WorkService
+    from infrastructure.storage import ListRepository
+
+    with _tf.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        src = root / "v.wav"
+        _tone(src, 1.0) if shutil.which("ffmpeg") else src.write_bytes(b"RIFF0000WAVE")
+        work_repo = ListRepository(root / "works.json")
+        model_repo = ListRepository(root / "models.json")
+        model_repo.add({"id": "m1", "framework": "rvc", "files": {"checkpoint": str(src)}})
+        service = WorkService(work_repo, StemPreparer(root / "works", shutil.which("ffmpeg") or ""), model_repo, None, None)
+        created = service.create_work({"mode": "vocals", "vocals_path": str(src), "model_id": "m1"})
+        assert created["ok"], created
+        wid = created["work"]["id"]
+        cancelled = service.cancel_work(wid)
+        assert cancelled["work"]["status"] == "cancelled", cancelled
+        retried = service.retry_work(wid)
+        assert retried["work"]["status"] == "pending", retried
+        # 幂等：对已完成状态取消不报错
+        again = service.cancel_work(wid)
+        assert again["ok"]
+    print("test_cancel_work OK")
+
+
 if __name__ == "__main__":
     test_rvc_command()
     test_resolve_device()
     test_svc_command()
     test_stitch_timeline()
     test_stitch_mixed_rates()
+    test_cancel_work()

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import config
+from infrastructure.proc_slot import SLOT
 
 
 class UvrTool:
@@ -46,13 +47,13 @@ class UvrTool:
         if do_dereverb:
             command.append("--do_dereverb")
         try:
-            proc = subprocess.run(
+            proc = SLOT.run(
                 command,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=None,
                 **config.subprocess_no_window(),
             )
         except (OSError, subprocess.SubprocessError) as exc:

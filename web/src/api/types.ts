@@ -124,8 +124,8 @@ export interface ImportModelFromUrlPayload {
 }
 
 export type WorkInputMode = 'song' | 'vocals' | 'stems'
-export type WorkStatus = 'pending' | 'running' | 'done' | 'failed'
-export type WorkStage = 'prepared' | 'queued' | 'inferencing' | 'mixing' | 'exported' | 'failed'
+export type WorkStatus = 'pending' | 'running' | 'done' | 'failed' | 'cancelled'
+export type WorkStage = 'prepared' | 'queued' | 'inferencing' | 'mixing' | 'exported' | 'failed' | 'cancelled'
 export type SegmentMode = 'solo' | 'choir' | 'mute' | 'original'
 
 export interface Segment {
@@ -298,6 +298,7 @@ export interface DesktopApi {
   get_work: (workId: string) => Promise<WorkMutationResult>
   start_work: (workId: string) => Promise<WorkMutationResult>
   retry_work: (workId: string) => Promise<WorkMutationResult>
+  cancel_work: (workId: string) => Promise<WorkMutationResult>
   rename_work: (workId: string, name: string) => Promise<WorkMutationResult>
   export_work: (workId: string, targetDir: string) => Promise<OpenPathResult>
   delete_work: (workId: string) => Promise<WorkMutationResult>

@@ -236,7 +236,7 @@ const mock = {
   async retry_work(workId: string): Promise<WorkMutationResult> {
     const work = mockWorks.find((item) => item.id === workId)
     if (!work) return { ok: false, error: 'Work not found' }
-    if (work.status !== 'failed') return { ok: true, work }
+    if (work.status !== 'failed' && work.status !== 'cancelled') return { ok: true, work }
     const now = new Date().toISOString()
     Object.assign(work, {
       status: 'pending',
@@ -244,6 +244,19 @@ const mock = {
       progress: 10,
       steps: [...(work.steps ?? []).filter((step) => step.status !== 'failed'), { key: 'retry', status: 'done', updated_at: now, message: 'Work reset for retry' }],
       logs: [...work.logs, { level: 'info', message: 'Work reset for retry', created_at: now }],
+      updated_at: now,
+    })
+    return { ok: true, work }
+  },
+  async cancel_work(workId: string): Promise<WorkMutationResult> {
+    const work = mockWorks.find((item) => item.id === workId)
+    if (!work) return { ok: false, error: 'Work not found' }
+    if (work.status !== 'pending' && work.status !== 'running') return { ok: true, work }
+    const now = new Date().toISOString()
+    Object.assign(work, {
+      status: 'cancelled',
+      stage: 'cancelled',
+      logs: [...work.logs, { level: 'warning', message: '任务已取消。', created_at: now }],
       updated_at: now,
     })
     return { ok: true, work }
@@ -371,6 +384,7 @@ export const api = {
   getWork: async (workId: string) => (await desktop()).get_work(workId),
   startWork: async (workId: string) => (await desktop()).start_work(workId),
   retryWork: async (workId: string) => (await desktop()).retry_work(workId),
+  cancelWork: async (workId: string) => (await desktop()).cancel_work(workId),
   renameWork: async (workId: string, name: string) => (await desktop()).rename_work(workId, name),
   exportWork: async (workId: string, targetDir: string) => (await desktop()).export_work(workId, targetDir),
   deleteWork: async (workId: string) => (await desktop()).delete_work(workId),

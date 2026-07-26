@@ -181,6 +181,9 @@ class Api:
     def retry_work(self, work_id: str) -> dict[str, Any]:
         return self._works.retry_work(work_id)
 
+    def cancel_work(self, work_id: str) -> dict[str, Any]:
+        return self._works.cancel_work(work_id)
+
     def rename_work(self, work_id: str, name: str) -> dict[str, Any]:
         return self._works.rename_work(work_id, name)
 

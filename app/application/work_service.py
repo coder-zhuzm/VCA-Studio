@@ -21,6 +21,7 @@ from application.segment_builder import build_segments
 from application.stem_preparer import StemPreparer
 from application.stitch_service import StitchService
 from infrastructure.pitch_analyzer import PitchAnalyzer, align_lyrics
+from infrastructure.proc_slot import SLOT
 from infrastructure.storage import ListRepository
 from infrastructure.uvr_tool import UvrTool
 
@@ -103,6 +104,7 @@ class WorkService:
         self._queue: queue.Queue[str] = queue.Queue()
         self._queued: set[str] = set()
         self._queue_lock = threading.Lock()
+        self._cancelled: set[str] = set()
         self._worker = threading.Thread(target=self._run_queue, daemon=True)
         self._worker.start()
 
@@ -215,11 +217,57 @@ class WorkService:
         self._enqueue(str(started["id"]))
         return {"ok": True, "work": started}
 
+    def cancel_work(self, work_id: str) -> dict[str, Any]:
+        work = self._repo.get(str(work_id))
+        if not work:
+            return {"ok": False, "error": "Work not found"}
+        status = work.get("status")
+        if status == "pending":
+            # 尚未进入 worker：从队列去重集移除，worker 取到后会跳过。
+            with self._queue_lock:
+                self._queued.discard(str(work_id))
+                self._cancelled.add(str(work_id))
+            return {"ok": True, "work": self._mark_cancelled(work)}
+        if status != "running":
+            return {"ok": True, "work": work}
+        with self._queue_lock:
+            self._cancelled.add(str(work_id))
+        SLOT.cancel()  # 终止当前长子进程；_run_work 检测到取消标记后收尾
+        return {"ok": True, "work": self._mark_cancelled(self._repo.get(str(work_id)) or work)}
+
+    def _is_cancelled(self, work_id: str) -> bool:
+        with self._queue_lock:
+            return work_id in self._cancelled
+
+    def _clear_cancelled(self, work_id: str) -> None:
+        with self._queue_lock:
+            self._cancelled.discard(work_id)
+
+    def _mark_cancelled(self, work: dict[str, Any]) -> dict[str, Any]:
+        if work.get("status") == "cancelled":
+            return work  # 已由 cancel_work 标记，避免重复日志
+        entry = {"level": "warning", "message": "任务已取消。", "created_at": _now()}
+        updated = {
+            **work,
+            "status": "cancelled",
+            "stage": "cancelled",
+            "steps": [
+                *(step for step in (work.get("steps") or []) if step.get("key") != "run"),
+                self._step("run", "cancelled", entry["created_at"], entry["message"]),
+            ],
+            "logs": [*(work.get("logs") or []), entry],
+            "updated_at": entry["created_at"],
+        }
+        self._append_log(updated, entry)
+        self._write_metadata(updated)
+        self._repo.update_item(str(updated["id"]), updated)
+        return updated
+
     def retry_work(self, work_id: str) -> dict[str, Any]:
         work = self._repo.get(str(work_id))
         if not work:
             return {"ok": False, "error": "Work not found"}
-        if work.get("status") != "failed":
+        if work.get("status") not in ("failed", "cancelled"):
             return {"ok": True, "work": work}
         entry = {"level": "info", "message": "Work reset for retry", "created_at": _now()}
         updated = {
@@ -545,8 +593,13 @@ class WorkService:
         work = self._repo.get(work_id)
         if not work or not self._inference_runner:
             return
+        if self._is_cancelled(work_id) or work.get("status") == "cancelled":
+            return
         if work.get("input_mode") == "song":
             work = self._separate(work)
+            if self._is_cancelled(work_id):
+                self._mark_cancelled(self._repo.get(work_id) or work)
+                return
             if work.get("status") == "failed":
                 return
         models = self._work_models(work)
@@ -557,7 +610,13 @@ class WorkService:
         try:
             ai_vocal = self._render_models(work, models)
         except Exception as exc:  # noqa: BLE001 - surface any render failure to the work log
-            self._fail_work(work, str(exc) or "渲染失败。")
+            if self._is_cancelled(work_id):
+                self._mark_cancelled(self._repo.get(work_id) or work)
+            else:
+                self._fail_work(work, str(exc) or "渲染失败。")
+            return
+        if self._is_cancelled(work_id):
+            self._mark_cancelled(self._repo.get(work_id) or work)
             return
         self._finish_work(work, ai_vocal)
 
@@ -652,6 +711,7 @@ class WorkService:
             finally:
                 with self._queue_lock:
                     self._queued.discard(work_id)
+                    self._cancelled.discard(work_id)
                 self._queue.task_done()
 
     def _vocals_path(self, work: dict[str, Any]) -> str:
